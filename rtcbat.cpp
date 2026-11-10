@@ -3,22 +3,50 @@
 #include "pin_config.h"  // define XPOWERS_CHIP_AXP2101
 #include <Wire.h>
 #include <time.h>
+#include <sys/time.h>
+#if HAS_PCF85063
 #include <SensorPCF85063.hpp>
+#endif
 #include <XPowersLib.h>
 
+#if HAS_PCF85063
 static SensorPCF85063 rtc;
+#endif
 static XPowersPMU pmu;
-static bool rtcOk = false;
+static bool rtcOk = false;  // true = PCF85063 presente; false = reloj del sistema
 static bool pmuOk = false;
 
+// Reloj de respaldo sin chip RTC (la 1.75C no lo tiene, o el PCF85063 no
+// responde): el reloj del sistema del ESP32. Sigue contando en light sleep; tras
+// un reset o un apagado vuelve a 1970, rtcEpoch() devuelve 0 y setup() lo
+// siembra con la ultima hora guardada, igual que con un PCF85063 sin pila.
+static const uint32_t SYS_EPOCH_MIN = 1735689600UL;  // 2025-01-01: antes = sin hora
+
+static uint32_t sysEpoch() {
+  time_t now = time(nullptr);
+  return (now >= (time_t)SYS_EPOCH_MIN) ? (uint32_t)now : 0;
+}
+
+static void sysSetEpoch(uint32_t e) {
+  struct timeval tv = {};
+  tv.tv_sec = (time_t)e;
+  settimeofday(&tv, nullptr);
+}
+
 bool rtcBegin() {
+#if HAS_PCF85063
   rtcOk = rtc.begin(Wire, IIC_SDA, IIC_SCL);
-  if (!rtcOk) Serial.println("PCF85063 no detectado");
+  if (!rtcOk) Serial.println("PCF85063 no detectado: uso el reloj del sistema");
+#else
+  rtcOk = false;
+  Serial.println("placa sin RTC: uso el reloj del sistema");
+#endif
   return rtcOk;
 }
 
 uint32_t rtcEpoch() {
-  if (!rtcOk) return 0;
+  if (!rtcOk) return sysEpoch();
+#if HAS_PCF85063
   RTC_DateTime t = rtc.getDateTime();
   if (t.getYear() < 2025 || t.getYear() > 2120) return 0;  // sin hora valida
   struct tm tmv = {};
@@ -30,15 +58,20 @@ uint32_t rtcEpoch() {
   tmv.tm_sec = t.getSecond();
   time_t e = mktime(&tmv);  // TZ por defecto = UTC, consistente con gmtime_r
   return e > 0 ? (uint32_t)e : 0;
+#else
+  return 0;
+#endif
 }
 
 void rtcSetEpoch(uint32_t e) {
-  if (!rtcOk) return;
+  if (!rtcOk) { sysSetEpoch(e); return; }
+#if HAS_PCF85063
   time_t tt = e;
   struct tm tmv;
   gmtime_r(&tt, &tmv);
   rtc.setDateTime(RTC_DateTime(tmv.tm_year + 1900, tmv.tm_mon + 1, tmv.tm_mday,
                                tmv.tm_hour, tmv.tm_min, tmv.tm_sec));
+#endif
 }
 
 bool batBegin() {

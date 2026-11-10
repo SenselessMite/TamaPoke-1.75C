@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Envia los sprites empaquetados a la SD de la placa por USB.
+"""Envia los sprites empaquetados a la placa por USB (a la SD en la 1.75, a la
+flash interna en la 1.75C). Van comprimidos en TPKZ (ver tools/tpkz.py).
 
   python3 tools/send_sd.py                  # envia tools/sdcard/mons/*.bin
   python3 tools/send_sd.py --port /dev/cu.usbmodem101
-  python3 tools/send_sd.py --ls             # lista lo que hay en la SD
+  python3 tools/send_sd.py --ls             # lista lo que hay en la placa
+  python3 tools/send_sd.py --raw            # sin comprimir (firmware < 1.19)
 """
 import argparse
 import glob
@@ -11,6 +13,8 @@ import os
 import sys
 import time
 import serial
+
+from tpkz import wrap
 
 def find_port():
     ports = glob.glob('/dev/cu.usbmodem*')
@@ -35,6 +39,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--port')
     ap.add_argument('--ls', action='store_true')
+    ap.add_argument('--raw', action='store_true', help='enviar sin comprimir')
     args = ap.parse_args()
 
     port = args.port or find_port()
@@ -53,7 +58,11 @@ def main():
         sys.exit("no hay .bin; ejecuta antes tools/pack_pmd.py")
 
     for path in files:
-        size = os.path.getsize(path)
+        with open(path, 'rb') as f:
+            data = f.read()
+        if not args.raw:
+            data = wrap(data)
+        size = len(data)
         name = f"mons/{os.path.basename(path)}"
         print(f"-> {name} ({size/1024:.0f} KB)")
         ser.write(f"PUT {name} {size}\n".encode())
@@ -62,19 +71,18 @@ def main():
             continue
         t0 = time.time()
         ok = True
-        with open(path, 'rb') as f:
-            while chunk := f.read(2048):
-                ser.write(chunk)
-                # espera el ack '#' del bloque
-                ack = ''
-                while ack not in ('#', 'ERR'):
-                    ack = ser.readline().decode(errors='replace').strip()
-                    if ack == '':
-                        ok = False
-                        break
-                if not ok or ack == 'ERR':
+        for i in range(0, size, 2048):
+            ser.write(data[i:i + 2048])
+            # espera el ack '#' del bloque
+            ack = ''
+            while ack not in ('#', 'ERR'):
+                ack = ser.readline().decode(errors='replace').strip()
+                if ack == '':
                     ok = False
                     break
+            if not ok or ack == 'ERR':
+                ok = False
+                break
         if ok and wait_line(ser, 'DONE', 30):
             kbs = size / 1024 / max(0.01, time.time() - t0)
             print(f"   ok ({kbs:.0f} KB/s)")

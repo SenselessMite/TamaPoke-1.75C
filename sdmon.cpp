@@ -1,11 +1,68 @@
 #include "sdmon.h"
 #include "pin_config.h"
 #include <FS.h>
+#if HAS_SD_SLOT
 #include <SD_MMC.h>
+#define SPRITE_FS SD_MMC  // 1.75: sprites en la microSD
+#else
+#include <FFat.h>
+#define SPRITE_FS FFat    // 1.75C (sin ranura SD): sprites en la FAT de la flash interna
+#endif
+// solo hace falta tinfl: sin los alias tipo zlib (compress, inflate...) como macros
+#define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
+#if __has_include(<miniz.h>)
+#include <miniz.h>        // inflado zlib de la ROM del ESP32-S3 (tinfl)
+#else
+#include <rom/miniz.h>
+#endif
 
 bool sdReady = false;
 bool sdDirty = false;
 SdThumbs thumbs;
+
+// ---------------------------------------------------------------------------
+// Lectura de un fichero entero a PSRAM, comprimido o no.
+// Los sprites crudos ocupan ~41 MB (no caben en la flash de la 1.75C), pero son
+// casi todo pixeles transparentes y con zlib se quedan en ~1.2 MB. Formato TPKZ
+// (lo generan tools/tpkz.py, pack_bundle.py y send_sd.py):
+//   char[4] "TPKZ" | uint32 rawSize (LE) | flujo zlib
+// Un fichero sin esa cabecera se lee tal cual: las SD ya cargadas siguen valiendo.
+// ---------------------------------------------------------------------------
+static uint8_t *inflateTpkz(const uint8_t *z, uint32_t zLen, uint32_t rawSize) {
+  uint8_t *out = (uint8_t *)ps_malloc(rawSize);
+  // el estado del descompresor son ~11 KB: al heap, no a la pila del loop
+  tinfl_decompressor *d = (tinfl_decompressor *)malloc(sizeof(tinfl_decompressor));
+  bool ok = out && d;
+  if (ok) {
+    tinfl_init(d);
+    size_t inLen = zLen, outLen = rawSize;
+    tinfl_status st = tinfl_decompress(d, z, &inLen, out, out, &outLen,
+                                       TINFL_FLAG_PARSE_ZLIB_HEADER |
+                                       TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+    ok = (st == TINFL_STATUS_DONE && outLen == rawSize);
+  }
+  if (d) free(d);
+  if (!ok && out) { free(out); out = nullptr; }
+  return out;
+}
+
+// Devuelve el contenido (ya descomprimido) en PSRAM, o nullptr. maxRaw acota el
+// tamano final para que un fichero corrupto no pida una reserva absurda.
+static uint8_t *readWhole(File &f, uint32_t maxRaw, uint32_t &outSize) {
+  outSize = 0;
+  uint32_t sz = f.size();
+  if (sz < 8 || sz > maxRaw) return nullptr;
+  uint8_t *buf = (uint8_t *)ps_malloc(sz);
+  if (!buf) return nullptr;
+  if (f.read(buf, sz) != sz) { free(buf); return nullptr; }
+  if (memcmp(buf, "TPKZ", 4) != 0) { outSize = sz; return buf; }  // sin comprimir
+  uint32_t raw;
+  memcpy(&raw, buf + 4, 4);
+  uint8_t *out = (raw >= 8 && raw <= maxRaw) ? inflateTpkz(buf + 8, sz - 8, raw) : nullptr;
+  free(buf);
+  if (out) outSize = raw;
+  return out;
+}
 
 bool PmdMon::load(uint8_t dexNum, bool shiny) {
   unload();
@@ -13,22 +70,20 @@ bool PmdMon::load(uint8_t dexNum, bool shiny) {
 
   char path[28];
   snprintf(path, sizeof(path), "/mons/p%s%03u.bin", shiny ? "s" : "", dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = SPRITE_FS.open(path, FILE_READ);
   if (!f && shiny) {  // sin shiny PMD: usa el normal
     snprintf(path, sizeof(path), "/mons/p%03u.bin", dexNum);
-    f = SD_MMC.open(path, FILE_READ);
+    f = SPRITE_FS.open(path, FILE_READ);
   }
   if (!f) return false;
 
-  uint32_t size = f.size();
-  if (size < 7 || size > 3UL * 1024 * 1024) { f.close(); return false; }
-  blob = (uint8_t *)ps_malloc(size);
-  if (!blob || f.read(blob, size) != size || memcmp(blob, "TPK2", 4) != 0) {
+  uint32_t size;
+  blob = readWhole(f, 3UL * 1024 * 1024, size);
+  f.close();
+  if (!blob || size < 7 || memcmp(blob, "TPK2", 4) != 0) {
     if (blob) { free(blob); blob = nullptr; }
-    f.close();
     return false;
   }
-  f.close();
 
   uint8_t nActs = blob[4];
   memcpy(&palCount, blob + 5, 2);
@@ -95,26 +150,20 @@ void SdThumbs::unload() {
 bool SdThumbs::load() {
   unload();  // recargar sin fugar el blob anterior
   if (!sdReady) return false;
-  File f = SD_MMC.open("/mons/thumbs.bin", FILE_READ);
+  File f = SPRITE_FS.open("/mons/thumbs.bin", FILE_READ);
   if (!f) {
     Serial.println("sin thumbs.bin (galeria sin miniaturas)");
     return false;
   }
-  uint32_t sz = f.size();
   // acota el tamano: evita un ps_malloc absurdo con un archivo corrupto
-  if (sz < 10 || sz > 2UL * 1024 * 1024) {
-    Serial.println("thumbs.bin invalido (tamano)");
-    f.close();
-    return false;
-  }
-  data = (uint8_t *)ps_malloc(sz);
-  if (!data || f.read(data, sz) != sz || memcmp(data, "TPTH", 4) != 0) {
+  uint32_t sz;
+  data = readWhole(f, 2UL * 1024 * 1024, sz);
+  f.close();
+  if (!data || sz < 10 || memcmp(data, "TPTH", 4) != 0) {
     Serial.println("thumbs.bin invalido");
     if (data) { free(data); data = nullptr; }
-    f.close();
     return false;
   }
-  f.close();
   memcpy(&count, data + 4, 2);
   // la tabla de offsets (uno por especie) debe caber entera en lo leido
   if ((uint32_t)6 + 4UL * count > sz) {
@@ -141,6 +190,7 @@ const uint8_t *SdThumbs::get(int16_t dex) const {
 }
 
 bool sdBegin() {
+#if HAS_SD_SLOT
   SD_MMC.setPins(SDMMC_CLK, SDMMC_CMD, SDMMC_DATA);
   sdReady = SD_MMC.begin("/sdcard", true /* modo 1-bit */, true /* formatea si no monta */);
   if (sdReady) {
@@ -149,6 +199,17 @@ bool sdBegin() {
   } else {
     Serial.println("SD no detectada (el juego usa los sprites de flash)");
   }
+#else
+  // particion "ffat" del esquema app3M_fat9M_16MB; se formatea sola la 1a vez
+  sdReady = FFat.begin(true /* formatea si no monta */);
+  if (sdReady) {
+    Serial.printf("FFat montada: %u KB libres\n",
+                  (unsigned)((FFat.totalBytes() - FFat.usedBytes()) / 1024));
+    if (!FFat.exists("/mons")) FFat.mkdir("/mons");
+  } else {
+    Serial.println("FFat no montada: falta la particion FAT (PartitionScheme=app3M_fat9M_16MB)");
+  }
+#endif
   return sdReady;
 }
 
@@ -158,10 +219,10 @@ bool SdMon::load(uint8_t dexNum, bool shiny) {
 
   char path[24];
   snprintf(path, sizeof(path), "/mons/%s%03u.bin", shiny ? "s" : "", dexNum);
-  File f = SD_MMC.open(path, FILE_READ);
+  File f = SPRITE_FS.open(path, FILE_READ);
   if (!f && shiny) {  // sin variante shiny: usa la normal
     snprintf(path, sizeof(path), "/mons/%03u.bin", dexNum);
-    f = SD_MMC.open(path, FILE_READ);
+    f = SPRITE_FS.open(path, FILE_READ);
   }
   if (!f) {
     Serial.printf("no existe %s\n", path);
@@ -253,8 +314,8 @@ bool sdSerialCommand(const String &line) {
     // que quedo a medias lo alargaba en vez de reemplazarlo: quedaba un sprite
     // corrupto y mas grande que el original. Importa mas desde que el instalador
     // reanuda transferencias cortadas, porque reintenta justo los que fallaron.
-    if (SD_MMC.exists(path)) SD_MMC.remove(path);
-    File f = SD_MMC.open(path, FILE_WRITE);
+    if (SPRITE_FS.exists(path)) SPRITE_FS.remove(path);
+    File f = SPRITE_FS.open(path, FILE_WRITE);
     if (!f) {
       Serial.println("ERR");
       return true;
@@ -280,11 +341,13 @@ bool sdSerialCommand(const String &line) {
     Serial.println(remaining == 0 ? "DONE" : "ERR");
     return true;
   } else if (line == "SDINFO") {  // diagnostico remoto de "no me reconoce la SD"
-    Serial.printf("total=%llu used=%llu\n", SD_MMC.totalBytes(), SD_MMC.usedBytes());
+    // SD_MMC devuelve uint64_t y FFat size_t: el cast deja %llu correcto en las dos
+    Serial.printf("total=%llu used=%llu\n", (unsigned long long)SPRITE_FS.totalBytes(),
+                  (unsigned long long)SPRITE_FS.usedBytes());
     Serial.println("DONE");
     return true;
   } else if (line == "LS") {
-    File dir = SD_MMC.open("/mons");
+    File dir = SPRITE_FS.open("/mons");
     if (dir) {
       File e;
       while ((e = dir.openNextFile())) {

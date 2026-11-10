@@ -1,11 +1,13 @@
 // TamaPoke - tamagotchi pixel art inspirado en la gen 1
-// para Waveshare ESP32-S3-Touch-AMOLED-1.75
+// para Waveshare ESP32-S3-Touch-AMOLED-1.75C (por defecto) o 1.75 (ver pin_config.h)
 //
 // Librerias (Library Manager o repo de Waveshare):
 //   - "GFX Library for Arduino" (moononournation), con soporte CO5300 QSPI
 //   - "SensorLib" (Lewis He), driver tactil CST9217
 //
 // Placa: ESP32S3 Dev Module | Flash 16MB | PSRAM: OPI PSRAM | USB CDC On Boot: Enabled
+//        Partition Scheme: 16M Flash (3MB APP/9.9MB FATFS) -> en la 1.75C los
+//        sprites viven en esa particion FAT (no tiene ranura microSD)
 //
 // Los sprites y la tabla de especies se generan con tools/sprites.py (emit).
 
@@ -180,7 +182,7 @@ void setup() {
   Serial.printf("TamaPoke fw v%s\n", FW_VERSION);
   loadLang();  // idioma guardado (ES por defecto)
   Wire.begin(IIC_SDA, IIC_SCL);
-  // CST9217 (tactil), AXP2101 (PMU) y PCF85063 (RTC) comparten este bus I2C.
+  // CST9217 (tactil), AXP2101 (PMU) y PCF85063 (RTC, solo en la 1.75) comparten este bus I2C.
   // Red de seguridad para PMU/RTC (SensorLib NO respeta este timeout en el
   // tactil; el cuelgue del tactil dormido se resuelve gateando por INT, ver
   // handleTouch).
@@ -2358,7 +2360,7 @@ void drawPet() {
     const char *l1 = T(S_NO_SPRITES);
     setCur(centerX(l1, 2), PET_CY - 4);
     printT(l1);
-    const char *l2 = T(S_LOAD_SPRITES);
+    const char *l2 = T(HAS_SD_SLOT ? S_LOAD_SPRITES : S_LOAD_SPRITES_USB);
     setCur(centerX(l2, 2), PET_CY + 20);
     printT(l2);
     return;

@@ -52,16 +52,18 @@
       <span slot="not-allowed">Needs HTTPS.</span>
     </esp-web-install-button>
     <p class="note">🔄 <b>Updating to a new version? Install <u>without</u> erasing</b> to keep
-       your Pokémon — the save lives in flash and the sprites on the microSD, so a normal
-       install keeps both. Only a full <b>Erase</b> wipes your saved pet (the SD sprites
-       survive even that). First time on a fresh board? You can erase, no problem.</p>
+       your Pokémon — the save lives in flash and the sprites on the microSD (1.75) or in
+       the board's flash (1.75C), so a normal install keeps both. A full <b>Erase</b> wipes
+       your saved pet (and, on the 1.75C, the sprites: just load them again in step 2).
+       First time on a fresh board? You can erase, no problem.</p>
   </div>
 
-  <h2><span class="num">2</span>Load the sprites onto the microSD</h2>
+  <h2><span class="num">2</span>Load the sprites</h2>
   <div class="step">
-    <p>Put a microSD into the board (it formats itself). Press <b>Connect board</b>
-       and then <b>Load sprites</b>: they download and copy over USB automatically
-       (~40 MB, a few minutes). Don't remove the card.</p>
+    <p><b>ESP32-S3-Touch-AMOLED-1.75:</b> put a microSD into the board (it formats itself).
+       <b>1.75C:</b> no card needed, the sprites go to the board's own flash.
+       Press <b>Connect board</b> and then <b>Load sprites</b>: they download and copy over
+       USB automatically (~1.2 MB compressed, under a minute). Don't unplug the board.</p>
     <p class="note">Close the step-1 install tab first (only one program can use
        the port at a time).</p>
     <div class="row">
@@ -207,7 +209,7 @@ document.getElementById('connect').onclick = async () => {
 document.getElementById('auto').onclick = async () => {
   if (!writer) { log('Connect the board first.'); return; }
   document.getElementById('auto').disabled = true;
-  log('Downloading sprite bundle (~58 MB)...');
+  log('Downloading sprite bundle (~1.2 MB)...');
   let items;
   try {
     // sprites.pak servido desde el mismo origen (GitHub Pages) -> sin lios de CORS

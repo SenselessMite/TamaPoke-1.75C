@@ -10,10 +10,17 @@ Formato TPAK (little-endian):
 
 El instalador (web/index.html) lo descarga, lo parte por el indice y manda cada
 fichero a la placa con el protocolo PUT (igual que tools/send_sd.py).
+
+Cada fichero va envuelto en TPKZ (zlib, ver tools/tpkz.py): ~1.2 MB en vez de
+~41 MB, lo que permite guardarlos en la flash interna de la 1.75C (sin SD).
+Con --raw se empaquetan sin comprimir (solo para firmware anterior a la 1.19).
 """
 import glob
 import os
 import struct
+import sys
+
+from tpkz import wrap
 
 HERE = os.path.dirname(__file__)
 MONS = os.path.join(HERE, 'sdcard', 'mons')
@@ -26,6 +33,9 @@ def main():
         raise SystemExit('no hay sprites en ' + MONS)
     names = ['mons/' + os.path.basename(f) for f in files]
     blobs = [open(f, 'rb').read() for f in files]
+    raw_total = sum(len(b) for b in blobs)
+    if '--raw' not in sys.argv[1:]:
+        blobs = [wrap(b) for b in blobs]
 
     with open(OUT, 'wb') as o:
         o.write(b'TPAK')
@@ -38,9 +48,8 @@ def main():
         for blob in blobs:
             o.write(blob)
 
-    total = sum(len(b) for b in blobs)
-    print(f'{os.path.normpath(OUT)}: {len(files)} sprites, {total / 1048576:.1f} MB datos '
-          f'({os.path.getsize(OUT) / 1048576:.1f} MB total)')
+    print(f'{os.path.normpath(OUT)}: {len(files)} sprites, {raw_total / 1048576:.1f} MB datos '
+          f'({os.path.getsize(OUT) / 1048576:.1f} MB en el bundle)')
 
 
 if __name__ == '__main__':
