@@ -29,6 +29,11 @@ TYPE_BIOME = {
 # excepciones por dex# (el tipo no basta): fosiles marinos roca/agua -> playa
 BIOME_OVERRIDE = {138: 1, 139: 1, 140: 1, 141: 1}  # Omanyte, Omastar, Kabuto, Kabutops
 
+# tipo principal (combate): el orden fija los valores del enum T_* que usa la
+# tabla de eficacias de battle.cpp, asi que solo se anade al final
+TYPE_ORDER = ['normal', 'fuego', 'agua', 'planta', 'electrico', 'hielo', 'lucha',
+              'veneno', 'tierra', 'psiquico', 'bicho', 'roca', 'fantasma', 'dragon']
+
 
 def main():
     out = []
@@ -39,6 +44,10 @@ def main():
     out.append(
         "// rareza: 0 = solo por evolucion, 1 = comun, 2 = raro, 3 = legendario\n"
         "enum : uint8_t { R_EVO = 0, R_COMUN, R_RARO, R_LEGENDARIO };\n\n"
+        "// tipo principal (combate; ver la tabla de eficacias de battle.cpp)\n"
+        "enum : uint8_t { " + ", ".join(
+            f"T_{t.upper()}" + (" = 0" if i == 0 else "") for i, t in enumerate(TYPE_ORDER))
+        + ", T_COUNT };\n\n"
         "struct DexEntry {\n"
         "  const char *name;\n"
         "  uint8_t evolvesTo;    // numero de dex, 0 = forma final\n"
@@ -47,13 +56,14 @@ def main():
         "  uint16_t accent;      // color RGB565 del tipo para la UI\n"
         "  uint8_t bHp, bAtk, bDef, bSpe;  // base stats reales de gen 1\n"
         "  uint8_t biome;        // 0 pradera 1 playa 2 bosque 3 volcan 4 montana 5 nieve\n"
+        "  uint8_t type;         // T_*: tipo principal\n"
         "};\n\n")
     # formas base = las que no son evolucion de nadie (las ramas de Eevee si lo son)
     evolved = {evo for *_, evo, _lvl in [(d[4], d[5]) for d in DEX] for evo in [_[0] for _ in [(d[4],) for d in DEX]]}
     evolved = {d[4] for d in DEX if d[4]} | {135, 136}
     rarities = []
     out.append("static const DexEntry DEX_TBL[DEX_COUNT + 1] = {\n")
-    out.append('  { "?", 0, 0, 0, 0x2946, 50, 50, 50, 50, 0 },  // 0: sin usar\n')
+    out.append('  { "?", 0, 0, 0, 0x2946, 50, 50, 50, 50, 0, T_NORMAL },  // 0: sin usar\n')
     for num, slug, display, typ, evo, lvl in DEX:
         acc = rgb565(TYPE_ACCENTS[typ])
         if num in evolved:
@@ -67,7 +77,8 @@ def main():
         rarities.append(rar)
         hp, atk, df, spe = BASE_STATS[num]
         bio = BIOME_OVERRIDE.get(num, TYPE_BIOME[typ])
-        out.append(f'  {{ "{display}", {evo}, {lvl}, {rar}, 0x{acc:04X}, {hp}, {atk}, {df}, {spe}, {bio} }},  // {num} {typ}\n')
+        tconst = f'T_{typ.upper()}'
+        out.append(f'  {{ "{display}", {evo}, {lvl}, {rar}, 0x{acc:04X}, {hp}, {atk}, {df}, {spe}, {bio}, {tconst} }},  // {num} {typ}\n')
     out.append("};\n\n")
 
     # Solo FR y DE tienen nombre propio en gen 1; ES/IT/PT usan el ingles.

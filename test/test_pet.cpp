@@ -936,3 +936,95 @@ TEST(save, el_autoguardado_se_marca_y_se_vuelca) {
   p.flushSave();
   CHECK(!p.savePending());
 }
+
+// ---------------------------------------------------------------- sensores
+// (motion.cpp / mic.cpp solo detectan; la recompensa vive en Pet y se prueba aqui)
+
+TEST(sensores, cada_200_pasos_premio) {
+  Pet p;
+  makePet(p, 4);
+  setStats(p, 50, 50, 50, 50);
+  p.weight = 10;
+  CHECK(!p.walk(199));
+  CHECK_EQ(p.joy, (uint8_t)50);
+  CHECK(p.walk(1));
+  CHECK_EQ(p.joy, (uint8_t)54);
+  CHECK_EQ(p.energy, (uint8_t)49);
+  CHECK_EQ(p.weight, (uint8_t)9);
+  CHECK_EQ(p.stepsTotal, (uint32_t)200);
+  CHECK(p.showHeart());
+}
+
+TEST(sensores, un_paseo_largo_da_varios_premios_de_golpe) {
+  Pet p;
+  makePet(p, 4);
+  setStats(p, 50, 50, 50, 50);
+  CHECK(p.walk(1000));  // 5 premios
+  CHECK_EQ(p.joy, (uint8_t)70);
+  CHECK_EQ(p.energy, (uint8_t)45);
+}
+
+TEST(sensores, pasear_el_huevo_lo_eclosiona) {
+  mockNvsReset();
+  mockSetMillis(0);
+  Pet p;
+  p.begin();
+  p.chooseStarter(4);
+  CHECK(p.isEgg());
+  CHECK(p.walk(899));
+  CHECK(p.isEgg());
+  CHECK_EQ(p.eggCracks(), (uint8_t)2);
+  CHECK(p.walk(1));
+  CHECK_MSG(!p.isEgg(), "900 pasos = 3 toques = eclosion");
+}
+
+TEST(sensores, pasos_eligiendo_inicial_no_tocan_el_huevo) {
+  mockNvsReset();
+  Pet p;
+  p.begin();
+  CHECK(p.awaitingStarter());
+  CHECK(!p.walk(1000));
+  CHECK_EQ(p.eggCracks(), (uint8_t)0);
+  CHECK_EQ(p.stepsTotal, (uint32_t)1000);  // pero cuentan en el total
+}
+
+TEST(sensores, durmiendo_los_pasos_solo_suman_al_total) {
+  Pet p;
+  makePet(p, 4);
+  setStats(p, 50, 50, 50, 50);
+  p.sleeping = true;
+  CHECK(!p.walk(400));
+  CHECK_EQ(p.joy, (uint8_t)50);
+  CHECK_EQ(p.stepsTotal, (uint32_t)400);
+}
+
+TEST(sensores, agitar_es_un_juego_corto) {
+  Pet p;
+  makePet(p, 4);
+  setStats(p, 50, 50, 50, 50);
+  CHECK(p.shakePlay());
+  CHECK_EQ(p.joy, (uint8_t)58);
+  CHECK_EQ(p.energy, (uint8_t)48);
+  p.sleeping = true;
+  CHECK_MSG(!p.shakePlay(), "dormido no se le despierta zarandeandolo");
+  CHECK_EQ(p.joy, (uint8_t)58);
+}
+
+TEST(sensores, agitar_el_huevo_cuenta_como_un_toque) {
+  mockNvsReset();
+  Pet p;
+  p.begin();
+  p.chooseStarter(1);
+  CHECK(p.shakePlay());
+  CHECK_EQ(p.eggCracks(), (uint8_t)1);
+}
+
+TEST(sensores, los_pasos_totales_se_guardan) {
+  Pet a;
+  makePet(a, 4);
+  a.walk(1234);
+  a.play();  // cualquier accion que guarde
+  Pet b;
+  b.begin();
+  CHECK_EQ(b.stepsTotal, (uint32_t)1234);
+}

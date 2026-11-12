@@ -61,6 +61,14 @@ enum StrId : uint8_t {
   S_CHOOSE_STARTER,  // titulo de la eleccion del inicial (primera vez)
   S_NO_SPRITES, S_LOAD_SPRITES,  // aviso cuando falta el sprite en la SD
   S_LOAD_SPRITES_USB,            // idem en placas sin SD (1.75C): van a la flash por USB
+  S_STEPS_FMT,                   // pasos del podometro en la ficha ("%lu pasos")
+  // combate
+  S_WILD_FMT,                    // "%s salvaje!" (aviso en el paseo y entrada al combate)
+  S_BTL_ATTACK, S_BTL_DODGE,     // indicacion del turno (tocar a tiempo)
+  S_BTL_WIN, S_BTL_LOSE,
+  S_BTL_SUPER, S_BTL_WEAK, S_BTL_CRIT, S_BTL_DODGED,
+  S_BTL_RANK_FMT,                // "RANGO %u  VICT. %u" (ficha de combate)
+  S_BTL_TIRED, S_BTL_LIMIT,      // por que no se puede pelear ahora
   STR_COUNT
 };
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 
 // Efectos de sonido del juego (cola, no bloqueante). El orden coincide con la
@@ -24,3 +25,7 @@ bool audioEnabled();
 void audioSetSleeping(bool sleeping);  // dormida: amplificador apagado
 bool audioBusy();                      // un efecto pedido en reposo aun puede estar sonando: no dormir la CPU
 void audioSetIdle(bool idle);          // sin uso reciente: amplificador apagado (un efecto lo enciende 4 s)
+
+// entrada de microfono (mic.cpp): comparte el bus I2S con el altavoz
+bool audioPlaying();                            // sonando (o recien acabado): el microfono lo oiria
+size_t audioMicRead(int16_t *buf, size_t bytes);  // bloquea; solo desde una tarea propia

@@ -25,6 +25,9 @@ static uint32_t gAmpHoldUntil = 0;  // un efecto pedido en reposo mantiene el am
 static bool gAmpHold = false;       // (indicador aparte: asi la comparacion no falla al dar la vuelta millis())
 static uint32_t gAmpOnAt = 0;       // cuando se encendio el amplificador
 static QueueHandle_t gQ = nullptr;
+static bool gI2sOk = false;            // canal I2S abierto (tambien la entrada de microfono)
+static volatile bool gPlaying = false;  // la tarea de audio esta sonando un efecto
+static volatile uint32_t gPlayEnd = 0;  // cuando acabo el ultimo (el eco del altavoz dura un poco)
 
 // El NS4150B tarda bastante mas de 8 ms en estabilizarse tras cada apagado, asi
 // que encenderlo justo antes de cada efecto se comia los cortos: el jingle de
@@ -155,7 +158,10 @@ static void audioTask(void *) {
       // el NS4150B tarda mas de 8 ms en estabilizarse: si se acaba de encender, el efecto espera
       int32_t since = (int32_t)(millis() - gAmpOnAt);
       if (since >= 0 && since < 50) vTaskDelay(pdMS_TO_TICKS(50 - since));
+      gPlaying = true;
       for (uint8_t i = 0; i < d.len; i++) playTone(d.n[i].f, d.n[i].ms);
+      gPlayEnd = millis();
+      gPlaying = false;
     }
   }
 }
@@ -171,6 +177,7 @@ void audioBegin() {
     Serial.println("I2S begin fallo");
     return;
   }
+  gI2sOk = true;  // con DIN configurado, el canal de entrada (microfono) tambien queda abierto
   if (!es8311Init()) { Serial.println("ES8311 no responde (audio off)"); return; }
 
   Preferences p;
@@ -217,4 +224,16 @@ void audioSetSleeping(bool sleeping) {
 void audioSetIdle(bool idle) {
   gIdle = idle;
   updateAmplifierPower();  // tambien cuando vence el mantenimiento de un aviso
+}
+
+// El altavoz se oye por el microfono: mientras suena un efecto (y un poco
+// despues, por el eco y la cola del amplificador) el microfono no debe contar.
+bool audioPlaying() { return gPlaying || (uint32_t)(millis() - gPlayEnd) < 250; }
+
+// Muestras del canal de entrada I2S (estereo 16 bit intercalado). Bloquea hasta
+// llenar el bufer; se llama desde la tarea del microfono (mic.cpp), nunca desde
+// el loop. El canal de salida lo usa la tarea de audio a la vez, sin conflicto.
+size_t audioMicRead(int16_t *buf, size_t bytes) {
+  if (!gI2sOk) return 0;
+  return i2s.readBytes((char *)buf, bytes);
 }

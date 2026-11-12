@@ -1,6 +1,7 @@
 #pragma once
 #include <Arduino.h>
 #include <Preferences.h>
+#include "battle.h"  // constantes de combate (rango, tope diario)
 
 // 1 tick = 1 minuto de juego. Baja este valor para probar mas rapido
 // (p. ej. 5000UL = las estadisticas caen 12x mas rapido).
@@ -14,6 +15,8 @@
 #define CEREMONY_MS 10000UL                // duracion de la despedida en pantalla
 #define FAREWELL_AGE_MIN (3UL * 24 * 60)   // se despide a los 3 dias de juego (en forma final)
 #define RUNAWAY_TICKS 60                   // se escapa tras 1 h con TODO a cero
+#define WALK_REWARD_STEPS 200              // cada 200 pasos de paseo: +FEL, +vinculo, quema peso
+#define EGG_WALK_STEPS 300                 // cada 300 pasos con el huevo: un "toque" (3 = eclosion)
 
 // milisegundos que faltan hasta `deadline` (0 si ya paso, o si deadline==0:
 // "temporizador inactivo"). Todos los temporizadores del juego (dialogos,
@@ -78,6 +81,8 @@ public:
   uint16_t lastMilestone = 0;  // hito de racha ya celebrado
   uint16_t gameHi = 0;     // record del minijuego (del jugador)
   uint16_t strHi = 0;      // record de golpes al saco
+  uint32_t stepsTotal = 0; // pasos dados con la placa encima (podometro; del jugador)
+  uint16_t battleWins = 0; // victorias en combate (del jugador): dan el rango de entrenador
 
   void begin();                 // carga estado de NVS (o crea el primer huevo)
   void update(uint32_t nowMs);  // llamar en cada loop()
@@ -101,6 +106,18 @@ public:
   void clean();
   void caress();  // tocar al bicho
   void eggTap();  // tocar el huevo: 3 toques y eclosiona
+  // Sensores (motion.cpp / mic.cpp)
+  bool shakePlay();              // agitar la placa: juego corto (huevo: lo mece = un toque); true si hizo algo
+  bool walk(uint16_t steps);     // pasos del podometro; true si dieron premio (para avisar en pantalla)
+  // Combate (battle.h): la logica del duelo va aparte, aqui solo lo que cuenta para la mascota
+  bool canBattle() const;        // despierto, sin huevo ni ceremonia y con energia suficiente
+  bool battleQuotaLeft() const;  // quedan combates a peticion hoy (los salvajes no gastan)
+  void useBattleQuota();
+  void battleEnd(bool won);      // premio o castigo; guarda
+  uint8_t trainerRank() const {
+    uint16_t r = battleWins / BATTLE_WINS_PER_RANK;
+    return r > BATTLE_MAX_RANK ? BATTLE_MAX_RANK : (uint8_t)r;
+  }
   void newEgg();   // empezar de cero con un inicial aleatorio
   void release();  // soltar (pulsacion larga + confirmar)
   void syncClock(uint32_t nowEpoch);  // aplica el tiempo transcurrido apagado
@@ -190,6 +207,10 @@ private:
   uint16_t goodTicks = 0;  // racha bien cuidado: forja la DEF
   uint32_t ceremonyUntil = 0;
   uint8_t bondToday = 0;       // tope diario de subida de vinculo
+  uint16_t stepAcc = 0;        // pasos aun sin premio (premio cada WALK_REWARD_STEPS)
+  uint16_t eggStepAcc = 0;     // pasos con el huevo encima (lo calientan: cada EGG_WALK_STEPS, un toque)
+  uint8_t battlesToday = 0;    // combates a peticion gastados hoy
+  uint32_t battleDay = 0;      // dia (today()) al que se refiere battlesToday
   uint32_t medalUntil = 0;     // celebracion de medalla en pantalla
   uint32_t milestoneUntil = 0; // celebracion de hito de racha
 

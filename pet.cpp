@@ -549,6 +549,102 @@ void Pet::eggTap() {
   else save();
 }
 
+// Agitar la placa (sensor de movimiento): un juego corto, mas flojo que el
+// minijuego. Con el huevo, mecerlo cuenta como un toque. Dormido no hace nada:
+// no se despierta a nadie zarandeandolo.
+bool Pet::shakePlay() {
+  if (ceremony != CER_NONE || starterPick) return false;
+  if (isEgg()) {
+    eggTap();
+    return true;
+  }
+  if (sleeping) return false;
+  joy = clamp100(joy + 8);
+  energy = clamp100(energy - 2);
+  if (weight > 0) weight--;
+  heartUntil = millis() + HEART_MS;
+  addBond(1);
+  registerCare();
+  return true;
+}
+
+// Pasos del podometro: salir a pasear con el bicho. Cada WALK_REWARD_STEPS da
+// felicidad y vinculo (con el mismo tope diario que el resto) y quema peso, a
+// cambio de un poco de energia. Con el huevo encima, el paseo lo calienta y
+// acaba eclosionando. Durmiendo los pasos solo suman al total.
+bool Pet::walk(uint16_t steps) {
+  if (!steps) return false;
+  stepsTotal += steps;
+  if (ceremony != CER_NONE || starterPick) return false;
+  bool reward = false;
+  if (isEgg()) {
+    uint32_t acc = (uint32_t)eggStepAcc + steps;
+    while (acc >= EGG_WALK_STEPS && isEgg()) {
+      acc -= EGG_WALK_STEPS;
+      eggTap();
+      reward = true;
+    }
+    eggStepAcc = isEgg() ? (uint16_t)acc : 0;
+    return reward;
+  }
+  if (sleeping) return false;
+  uint32_t acc = (uint32_t)stepAcc + steps;
+  while (acc >= WALK_REWARD_STEPS) {
+    acc -= WALK_REWARD_STEPS;
+    joy = clamp100(joy + 4);
+    energy = clamp100(energy - 1);
+    if (weight > 0) weight--;
+    addBond(1);
+    reward = true;
+  }
+  stepAcc = (uint16_t)acc;
+  if (reward) {
+    heartUntil = millis() + HEART_MS;
+    registerCare();
+  }
+  return reward;
+}
+
+// ---------------------------------------------------------------- combate
+bool Pet::canBattle() const {
+  return !isEgg() && !sleeping && ceremony == CER_NONE && !starterPick &&
+         energy >= BATTLE_MIN_ENERGY;
+}
+
+bool Pet::battleQuotaLeft() const {
+  return today() != battleDay || battlesToday < BATTLE_DAILY;
+}
+
+void Pet::useBattleQuota() {
+  if (today() != battleDay) {
+    battleDay = today();
+    battlesToday = 0;
+  }
+  if (battlesToday < 255) battlesToday++;
+}
+
+// Pelear cansa siempre. Ganar alegra, sube el vinculo y entrena un stat al azar
+// (+2, con el mismo tope de 100 que el saco y el minijuego); perder solo
+// desanima un poco: nunca hay nada irreversible.
+void Pet::battleEnd(bool won) {
+  if (isEgg() || ceremony != CER_NONE) return;
+  energy = dropTo(energy, 10, 5);
+  fullness = dropTo(fullness, 4, 5);
+  if (won) {
+    if (battleWins < 65535) battleWins++;
+    joy = clamp100(joy + 12);
+    uint8_t *tr[3] = { &trAtk, &trDef, &trSpe };
+    uint8_t &t = *tr[random(3)];
+    t = t + 2 > 100 ? 100 : t + 2;
+    heartUntil = millis() + HEART_MS;
+    addBond(2);
+  } else {
+    joy = dropTo(joy, 6, 5);
+  }
+  registerCare();
+  save();
+}
+
 PetMood Pet::mood() const {
   if (sleeping) return MOOD_SLEEPING;
   if (eating()) return MOOD_EATING;
@@ -594,6 +690,10 @@ void Pet::save() {
   prefs.putUShort("mstone", lastMilestone);
   prefs.putUShort("ghi", gameHi);
   prefs.putUShort("shi", strHi);
+  prefs.putUInt("stps", stepsTotal);
+  prefs.putUShort("bwin", battleWins);
+  prefs.putUChar("btd", battlesToday);
+  prefs.putUInt("bday", battleDay);
   prefs.putString("nick", nick);
 }
 
@@ -646,6 +746,10 @@ void Pet::load() {
   lastMilestone = prefs.getUShort("mstone", 0);
   gameHi = prefs.getUShort("ghi", 0);
   strHi = prefs.getUShort("shi", 0);
+  stepsTotal = prefs.getUInt("stps", 0);
+  battleWins = prefs.getUShort("bwin", 0);
+  battlesToday = prefs.getUChar("btd", 0);
+  battleDay = prefs.getUInt("bday", 0);
   prefs.getString("nick", nick, sizeof(nick));
   // siembra: la mascota actual cuenta como criada (guardados antiguos)
   if (speciesId >= 1) registerSpecies(speciesId);

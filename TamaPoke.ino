@@ -28,6 +28,9 @@
 #include "audio.h"
 #include "blit.h"
 #include "power.h"
+#include "motion.h"  // QMI8658: agitar, coger la placa, podometro
+#include "mic.h"     // ES7210: palmadas y soplidos
+#include "battle.h"  // combate por tiempo (logica pura)
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
@@ -104,6 +107,32 @@ uint16_t sackHits = 0;
 float sackShake = 0;
 uint8_t sackGain = 0;
 bool sackNewHi = false;
+
+// combate por tiempo contra un salvaje (logica en battle.cpp)
+enum : uint8_t { BP_INTRO = 0, BP_AIM, BP_HIT, BP_END };
+bool battleOpen = false;
+Fighter bMe, bFoe;
+PmdMon foePmd;                  // sprite del rival (PSRAM; se libera al acabar)
+uint8_t bPhase = BP_INTRO;
+bool bMyTurn = true;            // turno en curso: true = ataca la mascota
+uint32_t bT0 = 0;               // inicio de la fase en curso
+uint8_t bTurns = 0;
+uint8_t bQuality = HIT_MISS;    // toque del turno en curso
+uint16_t bDmg = 0;              // dano del ultimo golpe
+uint8_t bEff = 100;             // eficacia del ultimo golpe (%)
+bool bCrit = false;             // golpe critico (toque perfecto o suerte del rival)
+bool bWon = false;
+bool bWild = false;             // salio paseando (no gasta el cupo diario)
+// salvaje que salta al pasear: aviso en la pantalla principal hasta wildUntil
+int16_t wildDex = 0;
+uint16_t wildLvl = 0;
+uint32_t wildUntil = 0;
+uint16_t wildStepAcc = 0;
+uint32_t playMenuUntil = 0;     // boton jugar: minijuego o combate
+uint32_t battleMsgUntil = 0;    // aviso breve de por que no se puede pelear
+StrId battleMsg = S_BTL_TIRED;
+#define WILD_PILL_Y 116         // aviso del salvaje (pastilla bajo el mensaje de estado, que va en y=90)
+#define WILD_PILL_H 36
 
 // las 9 especies con sprite propio en flash (respaldo sin SD): dex -> indice
 int flashIdxForDex(int16_t dex) {
@@ -242,6 +271,8 @@ void setup() {
   pet.syncClock(e);
 
   audioBegin();  // ES8311 + I2S + amplificador (suena un jingle de arranque)
+  micBegin();    // ES7210 (microfonos) sobre el mismo I2S; despues de audioBegin
+  motionBegin(); // QMI8658 (acelerometro + podometro)
 
   lastInteract = millis();
 }
@@ -288,6 +319,7 @@ void loop() {
   wasRunReady = runReady;
 
   handleTouch();
+  handleSensors(now);
   handleSerial();
   ensureMon();
 
@@ -366,7 +398,7 @@ PowerCtx powerCtx(uint32_t now) {
   c.idleMs = idleSince(now, lastInteract);
   c.screenOff = screenOff;
   c.sleeping = pet.sleeping;
-  c.gameOpen = gameOpen || sackOpen;
+  c.gameOpen = gameOpen || sackOpen || battleOpen;
   c.usb = usbPresent();
   c.charging = batCharging();
   c.batPct = batPercent();
@@ -468,6 +500,17 @@ void handleSerial() {
   } else if (line == "TIME") {
     Serial.printf("rtc=%u\n", rtcEpoch());
     Serial.println("DONE");
+  } else if (line.startsWith("BATTLE")) {  // BATTLE [dex]: combate de prueba (no gasta el cupo)
+    int n = line.length() > 7 ? line.substring(7).toInt() : 0;
+    uint16_t lv = wildLevel(pet.level());
+    if (n < 1 || n > DEX_COUNT) n = pickWildDex(lv);
+    startBattle((int16_t)n, lv, true);
+    Serial.println("DONE");
+  } else if (line == "SENS") {  // niveles de microfono y acelerometro (ajuste de umbrales)
+    motionDebug();
+    micDebug();
+    Serial.printf("pasos totales=%lu\n", (unsigned long)pet.stepsTotal);
+    Serial.println("DONE");
   } else if (line == "GAL") {
     galleryOpen = !galleryOpen;
     galleryDetail = 0;
@@ -545,6 +588,111 @@ bool inPetZone(int16_t x, int16_t y) {
   return x > 110 && x < 356 && y > 95 && y < 310;
 }
 
+// ---------- sensores: movimiento (QMI8658) y microfono (ES7210) ----------
+
+// pantalla principal sin nada encima: los gestos de los sensores solo actuan aqui
+static bool petScreenFree() {
+  return !galleryOpen && !cardOpen && !kbOpen && !clockOpen && !gameOpen && !sackOpen &&
+         !battleOpen && !playMenuUntil &&
+         !confirmUntil && !choiceKind && !feedMenuUntil && !bathUntil && !pet.ceremony &&
+         !pet.awaitingStarter() && !pet.evolving();
+}
+
+// gesto one-shot del bicho (misma via que los caprichos de behNext)
+static void petGesture(uint8_t act) {
+  if (!pmd.has(act)) return;
+  uint32_t now = millis();
+  beh.mode = 2;
+  beh.act = act;
+  beh.t0 = now;
+  beh.until = now + pmdActTotalMs(pmd.acts[act]);
+}
+
+void handleSensors(uint32_t now) {
+  motionPoll(now);
+  // microfonos solo con alguien mirando: con la pantalla apagada o el bicho dormido se apagan
+  micSetActive(!screenOff && !pet.sleeping);
+
+  // pasos: cuentan siempre, el podometro del chip sigue con la CPU dormida
+  uint16_t steps = motionTakeSteps();
+  if (steps) {
+    bool wasEgg = pet.isEgg();
+    // el aviso solo suena con alguien mirando (en el bolsillo no pita cada 200 pasos)
+    if (pet.walk(steps) && !screenOff && dimStage == 0) sfxPlay(wasEgg ? SFX_TAP : SFX_HEART);
+    // paseando salta algun salvaje: queda esperando en pantalla (10 min) hasta que lo mires
+    if (!pet.isEgg()) {
+      uint32_t acc = (uint32_t)wildStepAcc + steps;
+      while (acc >= WILD_STEPS) {
+        acc -= WILD_STEPS;
+        if (!wildUntil && random(100) < WILD_CHANCE_PCT) {
+          wildLvl = wildLevel(pet.level());
+          wildDex = pickWildDex(wildLvl);
+          wildUntil = millis() + 10UL * 60000;
+          Serial.printf("SALVAJE #%d Nv.%u\n", wildDex, wildLvl);
+          if (!screenOff && dimStage == 0) sfxPlay(SFX_MEDAL);
+        }
+      }
+      wildStepAcc = (uint16_t)acc;
+    }
+  }
+
+  uint8_t me = motionTakeEvents();
+  uint8_t ae = micTakeEvents();
+  if (!me && !ae) return;
+  Serial.printf("SENSOR imu=%s%s mic=%s%s\n", (me & MOTION_SHAKE) ? "agitar " : "",
+                (me & MOTION_MOVED) ? "coger" : "", (ae & MIC_CLAP) ? "palmada " : "",
+                (ae & MIC_BLOW) ? "soplido" : "");
+
+  // Con la pantalla atenuada, cogerla para mirarla o dar una palmada solo la
+  // despierta (igual que el primer toque, que no acciona nada). Una sacudida no:
+  // corriendo con la placa en el bolsillo hay golpes de mas de 1 g a cada zancada.
+  // Apagada con el boton PWR se respeta siempre.
+  if (screenOff) return;
+  if (dimStage > 0) {
+    if ((me & MOTION_MOVED) || (ae & MIC_CLAP)) wakeUI();
+    return;
+  }
+
+  // agitar: juego corto (el huevo se mece y cuenta como un toque). No alarga el
+  // tiempo de pantalla encendida, por la misma razon del bolsillo.
+  if (me & MOTION_SHAKE) {
+    bool wasEgg = pet.isEgg();
+    if (petScreenFree() && pet.shakePlay()) {
+      sfxPlay(wasEgg ? SFX_TAP : SFX_PLAY);
+      if (!wasEgg) petGesture(PMD_POSE);
+    }
+  } else if (me & MOTION_MOVED) {
+    wakeUI();  // la acaban de coger para mirarla: cuenta como interaccion
+  }
+
+  // palmada o llamada: viene hacia el centro a mirarte (o asiente si ya esta ahi)
+  if (ae & MIC_CLAP) {
+    wakeUI();
+    if (petScreenFree() && !pet.isEgg() && !pet.sleeping) {
+      if (fabsf(beh.x - CX) > 20 && (pmd.has(PMD_WALKL) || pmd.has(PMD_WALKR))) {
+        beh.mode = 1;
+        beh.targetX = CX;
+        beh.t0 = now;
+        beh.until = now + 15000;
+      } else {
+        petGesture(PMD_NOD);
+      }
+      pet.caress();
+      sfxPlay(SFX_HEART);
+    }
+  }
+
+  // soplar: durante el bano revienta la espuma ya; fuera, el viento lo despeina
+  if (ae & MIC_BLOW) {
+    wakeUI();
+    if (bathUntil && bathPending && timeLeft(bathUntil) > 800) {
+      bathUntil = now + 800;  // drawBath pasa a los destellos y luego limpia
+    } else if (petScreenFree() && !pet.isEgg() && !pet.sleeping) {
+      petGesture(PMD_HURT);
+    }
+  }
+}
+
 // el toque se resuelve al LEVANTAR el dedo para distinguir tap de deslizar
 void handleTouch() {
   static uint32_t lastPoll = 0;
@@ -571,6 +719,16 @@ void handleTouch() {
   if (Wire.endTransmission() != 0) return;  // no responde: se reintenta en 20 ms
   int16_t x, y;
   bool pressed = touch.getPoint(&x, &y, 1) > 0;
+
+  // combate: el toque cuenta al apoyar el dedo (es un juego de tiempo)
+  if (battleOpen) {
+    if (pressed && !wasPressed) {
+      wakeUI();
+      battleTap(x, y);
+    }
+    wasPressed = pressed;
+    return;
+  }
 
   // saco de entrenamiento: cada toque cuenta al instante (aporrear rapido)
   if (sackOpen) {
@@ -626,8 +784,8 @@ void onSwipeV(int dir) {
     return;
   }
   if (dir > 0) {                    // deslizar abajo: ajustar hora
-    if (!confirmUntil && !feedMenuUntil) openClock();
-  } else if (!pet.isEgg() && !confirmUntil && !feedMenuUntil) {
+    if (!confirmUntil && !feedMenuUntil && !playMenuUntil) openClock();
+  } else if (!pet.isEgg() && !confirmUntil && !feedMenuUntil && !playMenuUntil) {
     cardOpen = true;                // deslizar arriba: ficha
     cardPage = 0;
   }
@@ -730,6 +888,24 @@ void onTap(int16_t x, int16_t y) {
     confirmUntil = 0;
     return;
   }
+  if (playMenuUntil) {       // boton jugar: minijuego (izquierda) o combate (derecha)
+    if (timeLeft(playMenuUntil) && y >= 288 && y <= 352 && x >= 167 && x <= 299) {
+      if (x < 233) {
+        startGame();
+      } else {
+        uint16_t lv = wildLevel(pet.level());
+        startBattle(pickWildDex(lv), lv, false);
+      }
+    }
+    playMenuUntil = 0;
+    return;
+  }
+  // aviso de salvaje del paseo: tocarlo empieza el combate
+  if (wildUntil && timeLeft(wildUntil) && !pet.isEgg() && !pet.sleeping && y >= WILD_PILL_Y && y <= WILD_PILL_Y + WILD_PILL_H &&
+      x >= 83 && x <= 383) {
+    startBattle(wildDex, wildLvl, true);
+    return;
+  }
   if (feedMenuUntil) {       // selector de comida
     if (timeLeft(feedMenuUntil) && y >= 288 && y <= 352 && x >= 101 && x <= 365) {
       int item = (x - 101) / 66;
@@ -765,7 +941,7 @@ void onTap(int16_t x, int16_t y) {
       if (i == 0) {
         if (!pet.sleeping) feedMenuUntil = millis() + 6000;
       } else if (i == 1) {
-        startGame();
+        if (!pet.isEgg() && !pet.sleeping) playMenuUntil = millis() + 6000;  // minijuego o combate
       } else if (i == 2) {
         pet.toggleLight();
       } else {
@@ -1049,7 +1225,7 @@ void printT(const char *s) {
 // mientras su "clave" no cambie no se repintan ni se vuelcan por QSPI.
 static bool staticScreen() {
   if (pet.awaitingStarter()) return true;
-  if (galleryOpen || gameOpen || sackOpen) return false;  // la galeria gestiona su propio repintado
+  if (galleryOpen || gameOpen || sackOpen || battleOpen) return false;  // la galeria gestiona su propio repintado
   if (kbOpen || clockOpen) return true;
   return cardOpen && cardPage != 0;  // la pagina 0 tiene el retrato animado
 }
@@ -1071,7 +1247,8 @@ static uint32_t screenKey() {
                         (uint32_t)pet.trAtk, (uint32_t)pet.trDef, (uint32_t)pet.trSpe, (uint32_t)pet.geneAtk,
                         (uint32_t)pet.geneDef, (uint32_t)pet.geneSpe, (uint32_t)pet.careMistakes,
                         (uint32_t)pet.fullness, (uint32_t)pet.joy, (uint32_t)pet.energy, (uint32_t)pet.hygiene,
-                        (uint32_t)pet.berryKnown, (uint32_t)pet.strHi, (uint32_t)gLang })
+                        (uint32_t)pet.berryKnown, (uint32_t)pet.strHi, (uint32_t)gLang,
+                        pet.stepsTotal, (uint32_t)pet.battleWins })
       h = mixKey(h, v);
     for (const char *c = pet.nick; *c; c++) h = mixKey(h, (uint8_t)*c);
   }
@@ -1104,6 +1281,10 @@ bool render() {
   }
   if (sackOpen) {
     renderSack();
+    return true;
+  }
+  if (battleOpen) {
+    renderBattle();
     return true;
   }
   if (kbOpen) {
@@ -1195,6 +1376,51 @@ bool render() {
       drawMap(SPR_ICON_BERRY_B, 16, 176, 296, 3, false);
       drawMap(SPR_ICON_BERRY_G, 16, 242, 296, 3, false);
       drawMap(SPR_ICON_CANDY, 16, 308, 296, 3, false);
+    }
+  }
+
+  // boton jugar: pokeball = minijuego, VS = combate
+  if (playMenuUntil) {
+    if (!timeLeft(playMenuUntil)) {
+      playMenuUntil = 0;
+    } else {
+      gfx->fillRoundRect(167, 288, 132, 64, 14, UI_WHITE);
+      gfx->drawRoundRect(167, 288, 132, 64, 14, inkColor());
+      drawMap(SPR_ICON_PLAY, 16, 176, 296, 3, false);
+      gfx->setTextColor(UI_BAR_BAD);
+      setSize(3);
+      setCur(242, 309);
+      printT("VS");
+    }
+  }
+
+  // salvaje del paseo esperando: pastilla bajo la cabecera (tocar = combatir)
+  if (wildUntil && !timeLeft(wildUntil)) wildUntil = 0;
+  if (wildUntil && !pet.isEgg() && !pet.sleeping && !pet.ceremony) {
+    char b[40];
+    snprintf(b, sizeof(b), T(S_WILD_FMT), dexName(wildDex));
+    uint16_t acc = DEX_TBL[wildDex].accent;
+    gfx->fillRoundRect(83, WILD_PILL_Y, 300, WILD_PILL_H, 18, UI_WHITE);
+    gfx->drawRoundRect(83, WILD_PILL_Y, 300, WILD_PILL_H, 18, acc);
+    gfx->setTextColor(acc);
+    setSize(2);
+    setCur(centerX(b, 2), WILD_PILL_Y + 10);
+    printT(b);
+  }
+
+  // por que no se puede pelear ahora (cansado / cupo del dia gastado)
+  if (battleMsgUntil) {
+    if (!timeLeft(battleMsgUntil)) {
+      battleMsgUntil = 0;
+    } else {
+      const char *m = T(battleMsg);
+      setSize(2);
+      int w = textW(m, 2) + 28;
+      gfx->fillRoundRect(CX - w / 2, 252, w, 34, 12, UI_WHITE);
+      gfx->drawRoundRect(CX - w / 2, 252, w, 34, 12, UI_BAR_BAD);
+      gfx->setTextColor(UI_BAR_BAD);
+      setCur(centerX(m, 2), 262);
+      printT(m);
     }
   }
 
@@ -1424,6 +1650,230 @@ void renderSack() {
   gfx->fillRoundRect(CX - bw / 2, 350, bw, 16, 5, UI_TRACK);
   if (fw > 2) gfx->fillRoundRect(CX - bw / 2, 350, fw, 16, 5, UI_BAR_OK);
 
+  gfx->flush();
+}
+
+// ---------- combate por tiempo (battle.h) ----------
+// Turnos alternos. En cada uno una aguja va y viene por una barra: el jugador
+// toca cuando pasa por el centro. En su turno = fuerza del ataque (centro =
+// critico); en el del rival = defensa (centro = esquiva). Sin tocar en
+// AIM_TIMEOUT_MS cuenta como fallo.
+#define BAR_W 280
+#define BAR_X (CX - BAR_W / 2)
+#define BAR_Y 380
+#define AIM_PERIOD_MS 1300   // ida y vuelta de la aguja
+#define AIM_TIMEOUT_MS 3900  // tres barridos
+#define INTRO_MS 1800
+#define HIT_MS 1200
+#define END_MS 5000
+
+// posicion de la aguja respecto al centro de la barra (-BAR_W/2 .. +BAR_W/2)
+static int16_t aimOffset(uint32_t t) {
+  uint32_t p = t % AIM_PERIOD_MS, half = AIM_PERIOD_MS / 2;
+  uint32_t v = p < half ? p : AIM_PERIOD_MS - p;
+  return (int16_t)((int32_t)v * BAR_W / (int32_t)half - BAR_W / 2);
+}
+
+static void showBattleMsg(StrId id) {
+  battleMsg = id;
+  battleMsgUntil = millis() + 2500;
+  sfxPlay(SFX_DENY);
+}
+
+// empieza un combate; false (y aviso) si la mascota no puede o se acabo el cupo
+bool startBattle(int16_t dex, uint16_t lvl, bool wild) {
+  if (!pet.canBattle()) {
+    if (!pet.isEgg() && !pet.sleeping && !pet.ceremony) showBattleMsg(S_BTL_TIRED);
+    return false;
+  }
+  if (!wild && !pet.battleQuotaLeft()) {
+    showBattleMsg(S_BTL_LIMIT);
+    return false;
+  }
+  if (!wild) pet.useBattleQuota();
+  bMe = makeFighter(pet.speciesId, pet.level(), pet.geneAtk, pet.geneDef, pet.geneSpe,
+                    pet.trAtk, pet.trDef, pet.trSpe);
+  bFoe = makeFighter(dex, lvl);
+  foePmd.load(dex, false);
+  battleOpen = true;
+  bWild = wild;
+  bPhase = BP_INTRO;
+  bT0 = millis();
+  bTurns = 0;
+  bDmg = 0;
+  bMyTurn = bMe.spe >= bFoe.spe;  // empieza el mas rapido
+  sfxPlay(SFX_MEDAL);
+  Serial.printf("COMBATE vs #%d %s Nv.%u (%s)\n", dex, DEX_TBL[bFoe.dex].name, lvl, wild ? "salvaje" : "a peticion");
+  return true;
+}
+
+static void closeBattle() {
+  battleOpen = false;
+  foePmd.unload();
+  if (bWild) wildUntil = 0;  // el aviso del salvaje ya se gasto
+}
+
+// aplica el golpe del turno en curso con la calidad del toque (bQuality)
+static void resolveHit(uint32_t now) {
+  Fighter &a = bMyTurn ? bMe : bFoe;
+  Fighter &d = bMyTurn ? bFoe : bMe;
+  uint16_t mul;
+  if (bMyTurn) {
+    mul = attackMulPct(bQuality);
+    bCrit = (bQuality == HIT_PERFECT);
+  } else {
+    bCrit = random(100) < 10;  // el rival a veces acierta de lleno
+    mul = (uint16_t)(bCrit ? 150 : 100) * guardMulPct(bQuality) / 100;
+  }
+  bEff = typeEffPct(a.type, d.type);
+  bDmg = battleDamage(a, d, mul, 85 + random(16));
+  d.hp = bDmg >= d.hp ? 0 : d.hp - bDmg;
+  bTurns++;
+  bPhase = BP_HIT;
+  bT0 = now;
+  sfxPlay(bDmg == 0 ? SFX_TAP : (bMyTurn ? SFX_PLAY : SFX_DENY));
+}
+
+// avanza las fases por tiempo (se llama en cada frame del combate)
+static void stepBattle(uint32_t now) {
+  uint32_t t = now - bT0;
+  if (bPhase == BP_INTRO && t >= INTRO_MS) {
+    bPhase = BP_AIM;
+    bT0 = now;
+  } else if (bPhase == BP_AIM && t >= AIM_TIMEOUT_MS) {
+    bQuality = HIT_MISS;  // no toco: golpe flojo / lo recibe entero
+    resolveHit(now);
+  } else if (bPhase == BP_HIT && t >= HIT_MS) {
+    if (bMe.hp == 0 || bFoe.hp == 0 || bTurns >= BATTLE_MAX_TURNS) {
+      bWon = battleWon(bMe, bFoe);
+      sfxPlay(bWon ? SFX_LEVEL : SFX_BYE);
+      bPhase = BP_END;
+      bT0 = now;
+      pet.battleEnd(bWon);  // guarda en NVS (~1 s congelado): mejor aqui, con el resultado en pantalla
+    } else {
+      bMyTurn = !bMyTurn;
+      bPhase = BP_AIM;
+      bT0 = now;
+    }
+  } else if (bPhase == BP_END && t >= END_MS) {
+    closeBattle();
+  }
+}
+
+// toque durante el combate: se resuelve al APOYAR el dedo (el tiempo importa)
+void battleTap(int16_t x, int16_t y) {
+  uint32_t now = millis();
+  if (bPhase == BP_AIM) {
+    if (y < 72 && bMyTurn) {  // tocar la cabecera en tu turno = huir (cuenta como derrota)
+      bMe.hp = 0;
+      bQuality = HIT_MISS;
+      bPhase = BP_HIT;
+      bT0 = now - HIT_MS;
+      return;
+    }
+    bQuality = timingQuality(aimOffset(now - bT0));
+    resolveHit(now);
+  } else if (bPhase == BP_END && now - bT0 > 1000) {
+    closeBattle();
+  }
+}
+
+// nombre + nivel y barra de PS de un luchador
+static void drawFighterInfo(const Fighter &f, int x, int y, int w, bool centered, uint16_t ink) {
+  char b[28];
+  snprintf(b, sizeof(b), T(S_NAME_FMT), "", dexName(f.dex), f.level);
+  setSize(2);
+  gfx->setTextColor(ink);
+  setCur(centered ? centerX(b, 2) : x, y);
+  printT(b);
+  int bx = centered ? CX - w / 2 : x;
+  int fw = f.maxHp ? (int)((uint32_t)w * f.hp / f.maxHp) : 0;
+  uint16_t col = f.hp * 2 > f.maxHp ? UI_BAR_OK : (f.hp * 5 > f.maxHp ? UI_BAR_WARN : UI_BAR_BAD);
+  gfx->fillRoundRect(bx, y + 22, w, 10, 3, UI_TRACK);
+  if (fw > 2) gfx->fillRoundRect(bx, y + 22, fw, 10, 3, col);
+}
+
+// accion PMD de un luchador segun la fase (ataca / encaja / quieto)
+static uint8_t fighterAct(const PmdMon &m, bool isMe, uint32_t t) {
+  uint8_t act = PMD_IDLE;
+  bool attacker = (bMyTurn == isMe);
+  if (bPhase == BP_HIT) {
+    if (attacker) act = PMD_ATTACK;
+    else if (bDmg > 0 && t > 300) act = PMD_HURT;
+  } else if (bPhase == BP_END) {
+    bool lost = isMe ? !bWon : bWon;
+    act = lost ? PMD_HURT : PMD_POSE;
+  }
+  return m.has(act) ? act : PMD_IDLE;
+}
+
+void renderBattle() {
+  uint32_t now = millis();
+  stepBattle(now);
+  if (!battleOpen) return;  // acaba de cerrarse: el proximo frame es la pantalla principal
+  uint32_t t = now - bT0;
+  drawGameScene();
+  bool night = sceneHour() < 6 || sceneHour() >= 20;
+  uint16_t ink = night ? UI_INK_NIGHT : UI_INK;
+
+  // rival arriba a la derecha, mascota abajo a la izquierda (los textos despues:
+  // un sprite grande no tapa la barra de PS)
+  if (foePmd.loaded) {
+    uint8_t a = fighterAct(foePmd, false, t);
+    drawPmdActM(foePmd, a, 310, 214, a == PMD_IDLE ? now : t, a == PMD_IDLE, false, 3);
+  }
+  if (pmd.loaded) {
+    uint8_t a = fighterAct(pmd, true, t);
+    drawPmdActM(pmd, a, 156, 340, a == PMD_IDLE ? now : t, a == PMD_IDLE, false, 3);
+  }
+  drawFighterInfo(bFoe, CX, 40, 180, true, ink);
+  drawFighterInfo(bMe, 250, 290, 150, false, ink);
+
+  setSize(3);
+  if (bPhase == BP_INTRO) {
+    char b[40];
+    snprintf(b, sizeof(b), T(S_WILD_FMT), dexName(bFoe.dex));
+    gfx->setTextColor(DEX_TBL[bFoe.dex].accent);
+    setCur(centerX(b, 3), 236);
+    printT(b);
+  } else if (bPhase == BP_AIM) {
+    // barra: zona buena (amarilla), centro (verde) y la aguja
+    gfx->fillRoundRect(BAR_X, BAR_Y, BAR_W, 18, 6, UI_TRACK);
+    gfx->fillRect(CX - TIMING_GOOD_PX, BAR_Y, TIMING_GOOD_PX * 2, 18, UI_BAR_WARN);
+    gfx->fillRect(CX - TIMING_PERFECT_PX, BAR_Y, TIMING_PERFECT_PX * 2, 18, UI_BAR_OK);
+    int nx = CX + aimOffset(t);
+    gfx->fillRect(nx - 3, BAR_Y - 6, 6, 30, ink);
+    const char *hint = T(bMyTurn ? S_BTL_ATTACK : S_BTL_DODGE);
+    setSize(2);
+    gfx->setTextColor(bMyTurn ? UI_BAR_BAD : 0x4C98);
+    setCur(centerX(hint, 2), BAR_Y - 28);
+    printT(hint);
+  } else if (bPhase == BP_HIT) {
+    // dano junto al que lo recibe y comentario del golpe en el centro
+    char b[12];
+    snprintf(b, sizeof(b), "-%u", bDmg);
+    gfx->setTextColor(UI_BAR_BAD);
+    int dy = (int)(t / 40);
+    if (bMyTurn) setCur(330, 110 - dy);
+    else setCur(100, 230 - dy);
+    if (bDmg > 0) printT(b);
+    const char *note = bDmg == 0 ? T(S_BTL_DODGED)
+                       : bCrit ? T(S_BTL_CRIT)
+                       : bEff > 100 ? T(S_BTL_SUPER)
+                       : bEff < 100 ? T(S_BTL_WEAK) : nullptr;
+    if (note) {
+      setSize(2);
+      gfx->setTextColor(ink);
+      setCur(centerX(note, 2), 246);
+      printT(note);
+    }
+  } else {  // BP_END
+    const char *r = T(bWon ? S_BTL_WIN : S_BTL_LOSE);
+    setSize(4);
+    gfx->setTextColor(bWon ? UI_BAR_WARN : ink);
+    setCur(centerX(r, 4), 228);
+    printT(r);
+  }
   gfx->flush();
 }
 
@@ -1821,10 +2271,28 @@ void renderCardStats() {
   setCur(centerX(T(S_BATTLE), 3), 48);
   printT(T(S_BATTLE));
 
+  // rango de entrenador (cada BATTLE_WINS_PER_RANK victorias)
+  char rk[32];
+  snprintf(rk, sizeof(rk), T(S_BTL_RANK_FMT), pet.trainerRank(), pet.battleWins);
+  gfx->setTextColor(UI_TRACK);
+  setSize(2);
+  setCur(centerX(rk, 2), 86);
+  printT(rk);
+
   drawCardStat(118, T(S_STAT_ATK), pet.atkStat(), 260, UI_BAR_BAD);
   drawCardStat(160, T(S_STAT_DEF), pet.defStat(), 260, 0x4C98);
   drawCardStat(202, T(S_STAT_SPE), pet.speStat(), 260, UI_BAR_WARN);
   drawCardStat(244, T(S_STAT_WGT), pet.weight, 100, 0xB3C8);
+
+  // pasos del podometro (si la placa tiene sensor de movimiento)
+  if (motionAvailable() || pet.stepsTotal) {
+    char st[32];
+    snprintf(st, sizeof(st), T(S_STEPS_FMT), (unsigned long)pet.stepsTotal);
+    gfx->setTextColor(UI_TRACK);
+    setSize(2);
+    setCur(centerX(st, 2), 272);
+    printT(st);
+  }
 
   // boton: saco de entrenamiento de fuerza
   gfx->fillRoundRect(96, 300, 274, 40, 12, UI_BAR_BAD);

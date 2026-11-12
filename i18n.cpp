@@ -34,7 +34,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "EVOLUCIONAR", "%s quiere decirte algo...", "%s se siente abandonado...",
     "Evolucionar?", "Mantener forma", "Despedirse?", "Despedirse", "Quedaros juntos",
     "Elige tu inicial",
-    "Sin sprites", "C\240rgalos en la SD", "C\240rgalos por USB",
+    "Sin sprites", "C\240rgalos en la SD", "C\240rgalos por USB", "%lu pasos",
+    "%s salvaje!", "ATACA!", "ESQUIVA!", "VICTORIA!", "DERROTA...", "Es muy eficaz!", "No es muy eficaz...", "Golpe cr\241tico!", "Esquivado!", "RANGO %u  VICT. %u", "Est\240 muy cansado", "Basta por hoy!",
   },
   // ---------------- EN ----------------
   {
@@ -63,7 +64,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "EVOLVE!", "%s wants to tell you...", "%s feels abandoned...",
     "Evolve?", "Keep form", "Say goodbye?", "Goodbye", "Stay together",
     "Choose your starter",
-    "No sprites", "Load them onto the SD", "Load them via USB",
+    "No sprites", "Load them onto the SD", "Load them via USB", "%lu steps",
+    "Wild %s!", "ATTACK!", "DODGE!", "YOU WIN!", "DEFEATED...", "Super effective!", "Not very effective...", "Critical hit!", "Dodged!", "RANK %u  WINS %u", "Too tired to fight", "Enough for today!",
   },
   // ---------------- FR ----------------
   {
@@ -92,7 +94,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "\220VOLUER", "%s veut te parler...", "%s se sent abandonn\202...",
     "\220voluer?", "Garder forme", "Dire adieu?", "Adieu", "Rester ensemble",
     "Choisis ton starter",
-    "Pas de sprites", "Charge-les sur la SD", "Charge-les via USB",
+    "Pas de sprites", "Charge-les sur la SD", "Charge-les via USB", "%lu pas",
+    "%s sauvage!", "ATTAQUE!", "ESQUIVE!", "VICTOIRE!", "D\220FAITE...", "Super efficace!", "Pas tr\212s efficace...", "Coup critique!", "Esquiv\202!", "RANG %u  VICT. %u", "Trop fatigu\202", "Assez pour ce jour!",
   },
   // ---------------- DE ----------------
   // El aleman si lleva dieresis: la fuente 5x7 del firmware es una tabla CP437
@@ -126,7 +129,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "ENTWICKELN", "%s will dir etwas sagen...", "%s f\201hlt sich verlassen...",
     "Entwickeln?", "Form behalten", "Abschied?", "Leb wohl", "Zusammen bleiben",
     "W\204hle deinen Starter",
-    "Keine Sprites", "Auf die SD laden", "Per USB laden",
+    "Keine Sprites", "Auf die SD laden", "Per USB laden", "%lu Schritte",
+    "Wildes %s!", "ANGRIFF!", "AUSWEICHEN!", "SIEG!", "NIEDERLAGE...", "Sehr effektiv!", "Nicht sehr effektiv...", "Volltreffer!", "Ausgewichen!", "RANG %u  SIEGE %u", "Zu m\201de", "Genug f\201r heute!",
   },
   // ---------------- IT ----------------
   {
@@ -155,7 +159,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "EVOLVI", "%s vuole dirti qualcosa...", "%s si sente abbandonato...",
     "Evolvere?", "Mantieni forma", "Salutare?", "Addio", "Restare insieme",
     "Scegli l'iniziale",
-    "Senza sprite", "Caricali sulla SD", "Caricali via USB",
+    "Senza sprite", "Caricali sulla SD", "Caricali via USB", "%lu passi",
+    "%s selvatico!", "ATTACCA!", "SCHIVA!", "VITTORIA!", "SCONFITTA...", "Superefficace!", "Poco efficace...", "Brutto colpo!", "Schivato!", "GRADO %u  VITT. %u", "Troppo stanco", "Basta per oggi!",
   },
   // ---------------- PT ----------------
   {
@@ -184,7 +189,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "EVOLUIR", "%s quer dizer-te algo...", "%s sente-se abandonado...",
     "Evoluir?", "Manter forma", "Despedir?", "Adeus", "Ficar juntos",
     "Escolhe o inicial",
-    "Sem sprites", "Carrega-os no SD", "Carrega-os por USB",
+    "Sem sprites", "Carrega-os no SD", "Carrega-os por USB", "%lu passos",
+    "%s selvagem!", "ATACA!", "DESVIA!", "VITORIA!", "DERROTA...", "Super eficaz!", "Pouco eficaz...", "Golpe cr\241tico!", "Desviou!", "NIVEL %u  VIT. %u", "Muito cansado", "Chega por hoje!",
   },
   // ---------------- JA ----------------
   {
@@ -236,7 +242,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
 
     "さいしょのポケモンをえらぶ",
 
-    "スプライトなし", "SDにいれてください", "USBでいれてください",
+    "スプライトなし", "SDにいれてください", "USBでいれてください", "ほすう %lu",
+    "やせいの %s!", "こうげき!", "よけて!", "かった!", "まけた...", "こうかは ばつぐんだ!", "いまひとつの ようだ", "きゅうしょに あたった!", "よけた!", "ランク %u  かち %u", "つかれて たたかえない", "きょうは もう おしまい",
   },
   // ---------------- KO ----------------
   // Los especificadores van en el MISMO ORDEN que en la fila inglesa aunque
@@ -270,7 +277,8 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "진화!", "%s가 할 말이 있대요...", "%s가 버려진 기분이래요...",
     "진화할까요?", "형태 유지", "작별할까요?", "작별", "계속 함께",
     "스타터를 선택하세요",
-    "스프라이트 없음", "SD 카드에 넣어주세요", "USB로 넣어주세요",
+    "스프라이트 없음", "SD 카드에 넣어주세요", "USB로 넣어주세요", "%lu 걸음",
+    "야생의 %s!", "공격!", "피해!", "승리!", "패배...", "효과가 굉장했다!", "효과가 별로인 듯하다", "급소에 맞았다!", "피했다!", "랭크 %u  승리 %u", "너무 지쳤어", "오늘은 그만!",
   },
 };
 
