@@ -189,6 +189,13 @@ const uint8_t *SdThumbs::get(int16_t dex) const {
   return data + off;
 }
 
+bool spriteFsUsage(uint32_t &usedKB, uint32_t &totalKB) {
+  if (!sdReady) return false;
+  usedKB = (uint32_t)((unsigned long long)SPRITE_FS.usedBytes() / 1024);
+  totalKB = (uint32_t)((unsigned long long)SPRITE_FS.totalBytes() / 1024);
+  return true;
+}
+
 bool sdBegin() {
 #if HAS_SD_SLOT
   SD_MMC.setPins(SDMMC_CLK, SDMMC_CMD, SDMMC_DATA);

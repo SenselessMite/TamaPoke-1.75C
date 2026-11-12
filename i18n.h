@@ -69,6 +69,16 @@ enum StrId : uint8_t {
   S_BTL_SUPER, S_BTL_WEAK, S_BTL_CRIT, S_BTL_DODGED,
   S_BTL_RANK_FMT,                // "RANGO %u  VICT. %u" (ficha de combate)
   S_BTL_TIRED, S_BTL_LIMIT,      // por que no se puede pelear ahora
+  // menu de ajustes (boton BOOT): titulos de pagina, filas y valores
+  S_MENU_SETTINGS, S_MENU_SENSORS, S_MENU_INFO, S_MENU_RESET,
+  S_SET_VOLUME, S_SET_BRIGHT, S_SET_DIM, S_DIM_SHORT, S_DIM_NORMAL, S_DIM_LONG, S_SET_USB,
+  S_SET_MIC, S_SET_GESTURES, S_SET_STEPS, S_SET_WILD,
+  S_RESET_STEPS, S_RESET_GAME, S_CONFIRM_AGAIN, S_BOOT_BACK,
+  // minijuegos extra
+  S_GAMES, S_G_QUIZ, S_G_BERRY, S_G_SIMON, S_G_MAZE,
+  S_QUIZ_Q, S_QUIZ_RIGHT, S_QUIZ_WRONG_FMT,  // "Era %s"
+  S_TILT_HINT, S_SIMON_WATCH, S_SIMON_GO,
+  S_TIME_FMT,                    // "TIEMPO %u s" (laberinto)
   STR_COUNT
 };
 

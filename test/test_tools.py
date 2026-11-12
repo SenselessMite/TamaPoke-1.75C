@@ -207,6 +207,8 @@ class TestBuffersDeTexto(unittest.TestCase):
         'S_NAME_FMT': ('estrella', 'nombre_o_apodo'),
         'S_RELEASE_FMT': ('nombre',),
         'S_INFO_FMT': ('baya',),
+        'S_WILD_FMT': ('nombre',),
+        'S_QUIZ_WRONG_FMT': ('nombre',),
         'S_FAREWELL_BTN': ('nombre_o_apodo',),
         'S_RUNAWAY_BTN': ('nombre_o_apodo',),
     }

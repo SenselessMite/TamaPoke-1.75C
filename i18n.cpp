@@ -21,7 +21,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "AJUSTAR HORA", "HORA", "MIN", "desliza arriba: cancelar", "Idioma",
     "MEDALLA!", "GENIAL!", "RACHA %u DIAS!",
     "RACHA %u  rec %u", "VIN", "BAYA ???", "BAYA ROJA", "BAYA AZUL", "BAYA VERDE",
-    "%s   EDAD %lud", "toca el nombre: renombrar",
+    "%s   EDAD %lud %luh", "toca el nombre: renombrar",
     "COMBATE", "FUE", "DEF", "VEL", "PES", "ENTRENAR FUERZA",
     "MEDALLAS %d/%d", "toca: volver",
     "NOMBRE:", "toca para volver",
@@ -36,6 +36,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Elige tu inicial",
     "Sin sprites", "C\240rgalos en la SD", "C\240rgalos por USB", "%lu pasos",
     "%s salvaje!", "ATACA!", "ESQUIVA!", "VICTORIA!", "DERROTA...", "Es muy eficaz!", "No es muy eficaz...", "Golpe cr\241tico!", "Esquivado!", "RANGO %u  VICT. %u", "Est\240 muy cansado", "Basta por hoy!",
+    "AJUSTES", "SENSORES", "INFO", "REINICIAR", "Volumen", "Brillo", "Apagar pantalla", "corto", "normal", "largo", "Encendida con USB", "Micr\242fono", "Gestos", "Pod\242metro", "Salvajes", "Borrar pasos", "Nueva partida", "Toca otra vez para confirmar", "BOOT: volver", "JUEGOS", "QUIEN ES?", "BAYAS", "MEMORIA", "LABERINTO", "Qui\202n es ese Pok\202mon?", "Correcto!", "Era %s", "Inclina la placa!", "Mira...", "Te toca!", "TIEMPO %u s",
   },
   // ---------------- EN ----------------
   {
@@ -51,7 +52,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "SET TIME", "HOUR", "MIN", "swipe up: cancel", "Lang",
     "MEDAL!", "AWESOME!", "%u DAY STREAK!",
     "STREAK %u  best %u", "BOND", "BERRY ???", "RED BERRY", "BLUE BERRY", "GREEN BERRY",
-    "%s   AGE %lud", "tap name: rename",
+    "%s   AGE %lud %luh", "tap name: rename",
     "BATTLE", "ATK", "DEF", "SPD", "WGT", "TRAIN STRENGTH",
     "MEDALS %d/%d", "tap: back",
     "NAME:", "tap to go back",
@@ -66,6 +67,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Choose your starter",
     "No sprites", "Load them onto the SD", "Load them via USB", "%lu steps",
     "Wild %s!", "ATTACK!", "DODGE!", "YOU WIN!", "DEFEATED...", "Super effective!", "Not very effective...", "Critical hit!", "Dodged!", "RANK %u  WINS %u", "Too tired to fight", "Enough for today!",
+    "SETTINGS", "SENSORS", "INFO", "RESET", "Volume", "Brightness", "Screen off", "short", "normal", "long", "On while on USB", "Microphone", "Gestures", "Step counter", "Wild Pokemon", "Clear steps", "New game", "Tap again to confirm", "BOOT: back", "GAMES", "WHO'S THAT?", "BERRIES", "MEMORY", "MAZE", "Who's that Pokemon?", "Correct!", "It was %s", "Tilt the board!", "Watch...", "Your turn!", "TIME %u s",
   },
   // ---------------- FR ----------------
   {
@@ -81,7 +83,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "R\220GLER L'HEURE", "HEURE", "MIN", "glisse haut: annuler", "Langue",
     "M\220DAILLE!", "SUPER!", "S\220RIE %u JOURS!",
     "S\220RIE %u  rec %u", "LIEN", "BAIE ???", "BAIE ROUGE", "BAIE BLEUE", "BAIE VERTE",
-    "%s   AGE %lud", "touche le nom: renommer",
+    "%s   AGE %luj %luh", "touche le nom: renommer",
     "COMBAT", "ATQ", "DEF", "VIT", "PDS", "ENTRAINER FORCE",
     "M\220DAILLES %d/%d", "touche: retour",
     "NOM:", "touche pour revenir",
@@ -96,6 +98,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Choisis ton starter",
     "Pas de sprites", "Charge-les sur la SD", "Charge-les via USB", "%lu pas",
     "%s sauvage!", "ATTAQUE!", "ESQUIVE!", "VICTOIRE!", "D\220FAITE...", "Super efficace!", "Pas tr\212s efficace...", "Coup critique!", "Esquiv\202!", "RANG %u  VICT. %u", "Trop fatigu\202", "Assez pour ce jour!",
+    "R\220GLAGES", "CAPTEURS", "INFO", "R\220INIT.", "Volume", "Luminosit\202", "Extinction \202cran", "court", "normal", "long", "Allum\202 sur USB", "Micro", "Gestes", "Podom\212tre", "Sauvages", "Effacer les pas", "Nouvelle partie", "Touche encore pour confirmer", "BOOT : retour", "JEUX", "QUI EST-CE?", "BAIES", "M\220MOIRE", "LABYRINTHE", "Quel est ce Pok\202mon?", "Bravo!", "C'\202tait %s", "Incline la carte!", "Regarde...", "\205 toi!", "TEMPS %u s",
   },
   // ---------------- DE ----------------
   // El aleman si lleva dieresis: la fuente 5x7 del firmware es una tabla CP437
@@ -116,7 +119,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "ZEIT STELLEN", "STD", "MIN", "hoch wischen: Abbruch", "Sprache",
     "MEDAILLE!", "TOLL!", "%u TAGE SERIE!",
     "SERIE %u  rek %u", "BND", "BEERE ???", "ROTE BEERE", "BLAUE BEERE", "GR\232NE BEERE",
-    "%s   ALTER %lud", "Name tippen: umbenennen",
+    "%s   ALTER %luT %luh", "Name tippen: umbenennen",
     "KAMPF", "ANG", "VER", "INI", "GEW", "KRAFT TRAINIEREN",
     "MEDAILLEN %d/%d", "tippen: zur\201ck",
     "NAME:", "tippen: zur\201ck",
@@ -131,6 +134,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "W\204hle deinen Starter",
     "Keine Sprites", "Auf die SD laden", "Per USB laden", "%lu Schritte",
     "Wildes %s!", "ANGRIFF!", "AUSWEICHEN!", "SIEG!", "NIEDERLAGE...", "Sehr effektiv!", "Nicht sehr effektiv...", "Volltreffer!", "Ausgewichen!", "RANG %u  SIEGE %u", "Zu m\201de", "Genug f\201r heute!",
+    "EINSTELLUNGEN", "SENSOREN", "INFO", "RESET", "Lautst\204rke", "Helligkeit", "Bildschirm aus", "kurz", "normal", "lang", "An bei USB", "Mikrofon", "Gesten", "Schrittz\204hler", "Wilde Pokemon", "Schritte l\224schen", "Neues Spiel", "Nochmal tippen zum Best\204tigen", "BOOT: zur\201ck", "SPIELE", "WER IST DAS?", "BEEREN", "MEMORY", "LABYRINTH", "Wer ist das Pokemon?", "Richtig!", "Es war %s", "Neige das Board!", "Pass auf...", "Du bist dran!", "ZEIT %u s",
   },
   // ---------------- IT ----------------
   {
@@ -146,7 +150,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "IMPOSTA ORA", "ORA", "MIN", "scorri su: annulla", "Lingua",
     "MEDAGLIA!", "GRANDE!", "SERIE %u GIORNI!",
     "SERIE %u  rec %u", "LEG", "BACCA ???", "BACCA ROSSA", "BACCA BLU", "BACCA VERDE",
-    "%s   ETA %lud", "tocca il nome: rinomina",
+    "%s   ETA %lug %luh", "tocca il nome: rinomina",
     "LOTTA", "ATT", "DIF", "VEL", "PES", "ALLENA FORZA",
     "MEDAGLIE %d/%d", "tocca: indietro",
     "NOME:", "tocca per tornare",
@@ -161,6 +165,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Scegli l'iniziale",
     "Senza sprite", "Caricali sulla SD", "Caricali via USB", "%lu passi",
     "%s selvatico!", "ATTACCA!", "SCHIVA!", "VITTORIA!", "SCONFITTA...", "Superefficace!", "Poco efficace...", "Brutto colpo!", "Schivato!", "GRADO %u  VITT. %u", "Troppo stanco", "Basta per oggi!",
+    "IMPOSTAZIONI", "SENSORI", "INFO", "RESET", "Volume", "Luminosit\205", "Spegni schermo", "breve", "normale", "lungo", "Acceso con USB", "Microfono", "Gesti", "Contapassi", "Selvatici", "Azzera passi", "Nuova partita", "Tocca di nuovo per confermare", "BOOT: indietro", "GIOCHI", "CHI E'?", "BACCHE", "MEMORY", "LABIRINTO", "Chi \212 quel Pok\202mon?", "Giusto!", "Era %s", "Inclina la scheda!", "Guarda...", "Tocca a te!", "TEMPO %u s",
   },
   // ---------------- PT ----------------
   {
@@ -176,7 +181,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "AJUSTAR HORA", "HORA", "MIN", "deslize cima: cancelar", "Idioma",
     "MEDALHA!", "OTIMO!", "%u DIAS SEGUIDOS!",
     "SEQ %u  rec %u", "LA\200O", "BAGA ???", "BAGA VERMELHA", "BAGA AZUL", "BAGA VERDE",
-    "%s   IDADE %lud", "toque no nome: renomear",
+    "%s   IDADE %lud %luh", "toque no nome: renomear",
     "COMBATE", "ATQ", "DEF", "VEL", "PES", "TREINAR FOR\200A",
     "MEDALHAS %d/%d", "toque: voltar",
     "NOME:", "toque para voltar",
@@ -191,6 +196,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "Escolhe o inicial",
     "Sem sprites", "Carrega-os no SD", "Carrega-os por USB", "%lu passos",
     "%s selvagem!", "ATACA!", "DESVIA!", "VITORIA!", "DERROTA...", "Super eficaz!", "Pouco eficaz...", "Golpe cr\241tico!", "Desviou!", "NIVEL %u  VIT. %u", "Muito cansado", "Chega por hoje!",
+    "AJUSTES", "SENSORES", "INFO", "REINICIAR", "Volume", "Brilho", "Desligar o visor", "curto", "normal", "longo", "Ligado com USB", "Microfone", "Gestos", "Ped\242metro", "Selvagens", "Apagar passos", "Novo jogo", "Toca outra vez para confirmar", "BOOT: voltar", "JOGOS", "QUEM \220?", "BAGAS", "MEMORIA", "LABIRINTO", "Quem \202 esse Pok\202mon?", "Certo!", "Era o %s", "Inclina a placa!", "Olha...", "\220 a tua vez!", "TEMPO %u s",
   },
   // ---------------- JA ----------------
   {
@@ -216,7 +222,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
 
     "れんぞく %u  きろく %u", "なかよし", "きのみ ???", "あかいきのみ", "あおいきのみ", "みどりのきのみ",
 
-    "%s   %luにち", "なまえをタッチ: へんこう",
+    "%s   %luにち %luじかん", "なまえをタッチ: へんこう",
 
     "バトル", "こうげき", "ぼうぎょ", "すばやさ", "たいじゅう", "ちからトレーニング",
 
@@ -244,6 +250,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
 
     "スプライトなし", "SDにいれてください", "USBでいれてください", "ほすう %lu",
     "やせいの %s!", "こうげき!", "よけて!", "かった!", "まけた...", "こうかは ばつぐんだ!", "いまひとつの ようだ", "きゅうしょに あたった!", "よけた!", "ランク %u  かち %u", "つかれて たたかえない", "きょうは もう おしまい",
+    "せってい", "センサー", "じょうほう", "リセット", "おんりょう", "あかるさ", "がめんオフ", "みじかい", "ふつう", "ながい", "USBで つけっぱなし", "マイク", "ジェスチャー", "ほすうけい", "やせい", "ほすうを けす", "はじめから", "もういちど タッチで けってい", "BOOT: もどる", "ゲーム", "だれかな?", "きのみ", "きおく", "めいろ", "だれだ?", "せいかい!", "%s だった", "かたむけて!", "みてて...", "きみの ばん!", "じかん %u びょう",
   },
   // ---------------- KO ----------------
   // Los especificadores van en el MISMO ORDEN que en la fila inglesa aunque
@@ -264,7 +271,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "시간 설정", "시", "분", "위로 스와이프: 취소", "언어",
     "메달!", "최고예요!", "%u일 연속!",
     "연속 %u  최고 %u", "유대감", "열매 ???", "빨간 열매", "파란 열매", "초록 열매",
-    "%s   나이 %lud", "이름 탭: 이름변경",
+    "%s   나이 %lu일 %lu시간", "이름 탭: 이름변경",
     "배틀", "공격", "방어", "속도", "무게", "힘 훈련",
     "메달 %d/%d", "탭: 뒤로",
     "이름:", "탭하면 뒤로",
@@ -279,6 +286,7 @@ static const char *const STRINGS[LANG_COUNT][STR_COUNT] = {
     "스타터를 선택하세요",
     "스프라이트 없음", "SD 카드에 넣어주세요", "USB로 넣어주세요", "%lu 걸음",
     "야생의 %s!", "공격!", "피해!", "승리!", "패배...", "효과가 굉장했다!", "효과가 별로인 듯하다", "급소에 맞았다!", "피했다!", "랭크 %u  승리 %u", "너무 지쳤어", "오늘은 그만!",
+    "설정", "센서", "정보", "초기화", "볼륨", "밝기", "화면 꺼짐", "짧게", "보통", "길게", "USB 연결 시 켜짐", "마이크", "제스처", "만보기", "야생", "걸음 초기화", "새 게임", "한 번 더 눌러 확인", "BOOT: 뒤로", "게임", "누구일까?", "열매", "기억", "미로", "이 포켓몬은 누구?", "정답!", "정답은 %s", "기울여 봐!", "잘 봐...", "네 차례!", "시간 %u초",
   },
 };
 

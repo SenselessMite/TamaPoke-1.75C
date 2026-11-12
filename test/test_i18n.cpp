@@ -48,7 +48,7 @@ static const ExpectedFmt EXPECTED[] = {
   { S_SCORE_FMT,       "%u" },
   { S_STREAK_DAYS_FMT, "%u" },
   { S_STREAK_FMT,      "%u,%u" },
-  { S_INFO_FMT,        "%s,%lu" },
+  { S_INFO_FMT,        "%s,%lu,%lu" },
   { S_MEDALS_FMT,      "%d,%d" },
   { S_REC_FMT,         "%u" },
   { S_LVL_FMT,         "%u" },
@@ -60,6 +60,8 @@ static const ExpectedFmt EXPECTED[] = {
   { S_STEPS_FMT,       "%lu" },
   { S_WILD_FMT,        "%s" },
   { S_BTL_RANK_FMT,    "%u,%u" },
+  { S_QUIZ_WRONG_FMT,  "%s" },
+  { S_TIME_FMT,        "%u" },
 };
 static const int NUM_EXPECTED = (int)(sizeof(EXPECTED) / sizeof(EXPECTED[0]));
 

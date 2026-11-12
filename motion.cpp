@@ -252,9 +252,15 @@ uint16_t motionTakeSteps() {
   return s;
 }
 
+bool motionAccel(float &x, float &y, float &z) {
+  if (!ok || !havePrev) return false;
+  x = px; y = py; z = pz;
+  return true;
+}
+
 void motionDebug() {
   if (!ok) { Serial.println("imu=off"); return; }
-  Serial.printf("imu=on mag=%.2fg dyn=%.2fg z=%.2fg quieta=%s peaks=%u steps=%lu (umbral sacudida %.1fg)\n",
-                lastMag, lastDyn, pz, stillSince ? "si" : "no", peaks,
+  Serial.printf("imu=on x=%.2f y=%.2f z=%.2f mag=%.2fg dyn=%.2fg quieta=%s peaks=%u steps=%lu (umbral sacudida %.1fg)\n",
+                px, py, pz, lastMag, lastDyn, stillSince ? "si" : "no", peaks,
                 (unsigned long)stepCount(), SHAKE_PEAK_G);
 }

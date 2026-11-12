@@ -28,6 +28,10 @@
 #define IIC_SCL 14
 #define TP_INT 11
 
+// Boton BOOT (GPIO0, en las dos placas): tras el arranque queda libre y el
+// firmware lo usa como boton de menu / volver (menu.ino)
+#define KEY_BOOT_PIN 0  // no BOOT_PIN: ese nombre ya lo define el core (esp32-hal.h)
+
 // Audio ES8311 (DAC) + amplificador NS4150B
 #define I2S_BCK_IO 9
 #define I2S_DI_IO 10

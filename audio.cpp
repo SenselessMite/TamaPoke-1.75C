@@ -115,11 +115,17 @@ static const Note N_MEDAL[]  = {{784, 70}, {0, 25}, {784, 70}, {0, 25}, {1047, 2
 static const Note N_DENY[]   = {{300, 110}, {200, 170}};
 static const Note N_BYE[]    = {{784, 150}, {659, 150}, {523, 280}};
 static const Note N_LEVEL[]  = {{784, 70}, {1047, 130}};
+// minijuego de memoria: los tonos clasicos del juego de los cuatro colores
+static const Note N_SIMON0[] = {{330, 260}};
+static const Note N_SIMON1[] = {{440, 260}};
+static const Note N_SIMON2[] = {{554, 260}};
+static const Note N_SIMON3[] = {{659, 260}};
 
 struct SfxDef { const Note *n; uint8_t len; };
 static const SfxDef SFX[SFX_COUNT] = {
   {N_TAP, 1}, {N_EAT, 3}, {N_PLAY, 2}, {N_HEART, 2}, {N_HATCH, 4},
   {N_EVOLVE, 5}, {N_MEDAL, 5}, {N_DENY, 2}, {N_BYE, 3}, {N_LEVEL, 2},
+  {N_SIMON0, 1}, {N_SIMON1, 1}, {N_SIMON2, 1}, {N_SIMON3, 1},
 };
 
 static int16_t buf[256 * 2];  // estéreo intercalado (L=R)
@@ -224,6 +230,12 @@ void audioSetSleeping(bool sleeping) {
 void audioSetIdle(bool idle) {
   gIdle = idle;
   updateAmplifierPower();  // tambien cuando vence el mantenimiento de un aviso
+}
+
+// volumen del DAC (registro 0x32, el mismo que fija es8311Init a 0 dB). Por I2C
+// desde el loop, como el resto de escrituras al codec.
+void audioSetVolume(uint8_t dacReg) {
+  if (gReady) esW(0x32, dacReg);
 }
 
 // El altavoz se oye por el microfono: mientras suena un efecto (y un poco

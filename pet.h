@@ -17,6 +17,16 @@
 #define RUNAWAY_TICKS 60                   // se escapa tras 1 h con TODO a cero
 #define WALK_REWARD_STEPS 200              // cada 200 pasos de paseo: +FEL, +vinculo, quema peso
 #define EGG_WALK_STEPS 300                 // cada 300 pasos con el huevo: un "toque" (3 = eclosion)
+// Peso (0-100, 0 = en forma): cada baya suma un poco y comer ya lleno (>=80)
+// bastante mas; la chuche +12. Se quema 1 punto cada WEIGHT_BURN_MIN minutos
+// despierto (el doble de lento dormido) y con ejercicio, paseos y combates.
+#define WEIGHT_MEAL 3
+#define WEIGHT_FULL_MEAL 8
+#define WEIGHT_BURN_MIN 10
+#define WEIGHT_FIT 20                      // medalla "en forma": peso hasta aqui (comer ya no lo deja en 0)
+
+// minijuegos extra (games.ino): cada uno premia distinto, ver Pet::miniGameResult
+enum : uint8_t { MINI_QUIZ = 0, MINI_BERRY, MINI_SIMON, MINI_MAZE, MINI_COUNT };
 
 // milisegundos que faltan hasta `deadline` (0 si ya paso, o si deadline==0:
 // "temporizador inactivo"). Todos los temporizadores del juego (dialogos,
@@ -83,6 +93,7 @@ public:
   uint16_t strHi = 0;      // record de golpes al saco
   uint32_t stepsTotal = 0; // pasos dados con la placa encima (podometro; del jugador)
   uint16_t battleWins = 0; // victorias en combate (del jugador): dan el rango de entrenador
+  uint16_t miniHi[MINI_COUNT] = { 0 };  // records de los minijuegos extra (del jugador)
 
   void begin();                 // carga estado de NVS (o crea el primer huevo)
   void update(uint32_t nowMs);  // llamar en cada loop()
@@ -114,6 +125,8 @@ public:
   bool battleQuotaLeft() const;  // quedan combates a peticion hoy (los salvajes no gastan)
   void useBattleQuota();
   void battleEnd(bool won);      // premio o castigo; guarda
+  bool miniGameResult(uint8_t kind, uint16_t score);  // premio de un minijuego extra; true = record
+  void resetSteps() { stepsTotal = 0; stepAcc = eggStepAcc = 0; save(); }  // menu de ajustes
   uint8_t trainerRank() const {
     uint16_t r = battleWins / BATTLE_WINS_PER_RANK;
     return r > BATTLE_MAX_RANK ? BATTLE_MAX_RANK : (uint8_t)r;

@@ -125,7 +125,7 @@ void Pet::tick() {
   // El peso aun se quema; la racha de buen cuidado (goodTicks) queda en pausa.
   if (sleeping) {
     energy = clamp100(energy + 6);
-    if (weight > 0 && ageMinutes % 3 == 0) weight--;
+    if (weight > 0 && ageMinutes % (2 * WEIGHT_BURN_MIN) == 0) weight--;
     if (ageMinutes % 2 == 0) {                 // ~4x mas lento que despierto
       fullness = dropTo(fullness, 1, 30);
       joy = dropTo(joy, 1, 35);
@@ -145,7 +145,7 @@ void Pet::tick() {
   hygiene = clamp100(hygiene - 1 - 4 * poops);
   // el sobrepeso da pereza: la energia cae el doble
   if (weight > 50) energy = clamp100(energy - 1);
-  if (weight > 0 && ageMinutes % 3 == 0) weight--;
+  if (weight > 0 && ageMinutes % WEIGHT_BURN_MIN == 0) weight--;
 
   // la disciplina forja la defensa: 12 h seguidas bien cuidado = +1 DEF
   if (lowestStat() >= 40) {
@@ -304,7 +304,7 @@ void Pet::checkMedals() {
   if (streak >= 7) medals |= MED_STREAK7;
   if (bond >= 100) medals |= MED_BOND;
   if (DEX_TBL[speciesId].evolvesTo == 0) medals |= MED_FINAL;
-  if (weight == 0 && level() >= 5 && careMistakes == 0) medals |= MED_FIT;
+  if (weight <= WEIGHT_FIT && level() >= 5 && careMistakes == 0) medals |= MED_FIT;
   uint16_t gained = medals & ~before;
   if (gained) {
     for (uint16_t m = gained; m; m &= (m - 1)) totalMedals++;
@@ -442,6 +442,8 @@ void Pet::feed() {
 void Pet::feedBerry(uint8_t color) {
   if (ceremony != CER_NONE) return;
   if (isEgg() || sleeping) return;
+  // comer engorda un poco; comer ya lleno, bastante mas (y la chuche, mas aun)
+  weight = clamp100(weight + (fullness >= 80 ? WEIGHT_FULL_MEAL : WEIGHT_MEAL));
   if (lovesBerry(color)) {
     fullness = clamp100(fullness + 35);
     joy = clamp100(joy + 10);
@@ -645,6 +647,52 @@ void Pet::battleEnd(bool won) {
   save();
 }
 
+// ---------------------------------------------------------------- minijuegos extra
+// Cada juego premia una cosa: el quiz y la memoria alegran y unen, las bayas
+// alimentan y entrenan la VEL, el laberinto (solo si se termina) entrena la VEL.
+// Todos cansan un poco; el record es del jugador, como el del minijuego clasico.
+bool Pet::miniGameResult(uint8_t kind, uint16_t score) {
+  if (kind >= MINI_COUNT || isEgg() || ceremony != CER_NONE) return false;
+  bool record = score > miniHi[kind];
+  if (record) miniHi[kind] = score;
+  int s = score > 100 ? 100 : (int)score;
+  switch (kind) {
+    case MINI_QUIZ:
+      joy = clamp100(joy + (s * 3 > 24 ? 24 : s * 3));
+      energy = dropTo(energy, 2, 5);
+      if (s >= 5) addBond(2);
+      break;
+    case MINI_BERRY: {
+      fullness = clamp100(fullness + (s * 2 > 30 ? 30 : s * 2));
+      uint16_t v = (uint16_t)trSpe + s / 6;
+      trSpe = v > 100 ? 100 : (uint8_t)v;
+      joy = clamp100(joy + 6);
+      energy = dropTo(energy, 8, 5);
+      weight = (int)weight - s > 0 ? weight - s : 0;
+      addBond(1);
+      break;
+    }
+    case MINI_SIMON:
+      joy = clamp100(joy + (s * 3 > 25 ? 25 : s * 3));
+      energy = dropTo(energy, 4, 5);
+      if (s >= 6) addBond(2);
+      break;
+    case MINI_MAZE:
+      if (s > 0) {  // lo termino a tiempo (score = segundos que sobraron)
+        joy = clamp100(joy + 15);
+        uint16_t v = (uint16_t)trSpe + 2;
+        trSpe = v > 100 ? 100 : (uint8_t)v;
+        addBond(1);
+      }
+      energy = dropTo(energy, 6, 5);
+      break;
+  }
+  if (s > 0) heartUntil = millis() + HEART_MS;
+  registerCare();
+  save();
+  return record;
+}
+
 PetMood Pet::mood() const {
   if (sleeping) return MOOD_SLEEPING;
   if (eating()) return MOOD_EATING;
@@ -692,6 +740,7 @@ void Pet::save() {
   prefs.putUShort("shi", strHi);
   prefs.putUInt("stps", stepsTotal);
   prefs.putUShort("bwin", battleWins);
+  prefs.putBytes("mhi", miniHi, sizeof(miniHi));
   prefs.putUChar("btd", battlesToday);
   prefs.putUInt("bday", battleDay);
   prefs.putString("nick", nick);
@@ -748,6 +797,8 @@ void Pet::load() {
   strHi = prefs.getUShort("shi", 0);
   stepsTotal = prefs.getUInt("stps", 0);
   battleWins = prefs.getUShort("bwin", 0);
+  memset(miniHi, 0, sizeof(miniHi));
+  prefs.getBytes("mhi", miniHi, sizeof(miniHi));
   battlesToday = prefs.getUChar("btd", 0);
   battleDay = prefs.getUInt("bday", 0);
   prefs.getString("nick", nick, sizeof(nick));

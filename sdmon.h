@@ -56,6 +56,7 @@ struct SdThumbs {
 extern SdThumbs thumbs;
 
 bool sdBegin();                 // monta la SD (SDMMC 1-bit), true si hay tarjeta
+bool spriteFsUsage(uint32_t &usedKB, uint32_t &totalKB);  // espacio de los sprites (SD o FAT interna)
 bool sdSerialCommand(const String &line);  // PUT/LS por USB; true si la maneja
 extern bool sdReady;
 extern bool sdDirty;  // true tras recibir archivos: recargar sprite

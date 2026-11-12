@@ -21,3 +21,6 @@ void motionPoll(uint32_t nowMs);   // llamar en cada pase del loop (se autolimit
 uint8_t motionTakeEvents();        // gestos ocurridos desde la ultima llamada (y los borra)
 uint16_t motionTakeSteps();        // pasos nuevos del podometro desde la ultima llamada
 void motionDebug();                // vuelca el estado por serie (comando SENS)
+// ultima lectura del acelerometro en g (ejes del chip); false si no hay sensor.
+// Los minijuegos de inclinar la convierten a ejes de pantalla (games.ino).
+bool motionAccel(float &x, float &y, float &z);

@@ -222,8 +222,20 @@ TEST(tick, sobrepeso_se_quema_solo) {
   Pet p;
   makePet(p, 4);
   p.weight = 30;
-  advance(p, 30);
-  CHECK_EQ(p.weight, (uint8_t)20);  // -1 cada 3 minutos
+  advance(p, 10 * WEIGHT_BURN_MIN);
+  CHECK_EQ(p.weight, (uint8_t)20);  // -1 cada WEIGHT_BURN_MIN minutos despierto
+}
+
+TEST(feed, comer_engorda_y_mas_si_ya_esta_lleno) {
+  Pet p;
+  makePet(p, 4);
+  p.fullness = 50;
+  p.weight = 0;
+  p.feedBerry(0);
+  CHECK_EQ(p.weight, (uint8_t)WEIGHT_MEAL);
+  p.fullness = 90;
+  p.feedBerry(0);
+  CHECK_EQ(p.weight, (uint8_t)(WEIGHT_MEAL + WEIGHT_FULL_MEAL));
 }
 
 TEST(tick, descuido_cuenta_una_vez_por_hora) {

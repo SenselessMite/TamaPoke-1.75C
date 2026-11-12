@@ -31,6 +31,8 @@
 #include "motion.h"  // QMI8658: agitar, coger la placa, podometro
 #include "mic.h"     // ES7210: palmadas y soplidos
 #include "battle.h"  // combate por tiempo (logica pura)
+#include "settings.h"  // ajustes del jugador (menu.ino)
+// menu.ino (boton BOOT + ajustes) y games.ino (minijuegos extra) se compilan junto a este fichero
 
 // Version del firmware. Subir este numero en cada release (y manifest.json para
 // el instalador web). Se muestra en la pantalla de ajustes y por serie al arrancar.
@@ -128,7 +130,8 @@ int16_t wildDex = 0;
 uint16_t wildLvl = 0;
 uint32_t wildUntil = 0;
 uint16_t wildStepAcc = 0;
-uint32_t playMenuUntil = 0;     // boton jugar: minijuego o combate
+uint32_t stepsPillUntil = 0;   // tras llegar pasos nuevos se ven unos segundos en la pantalla principal
+#define STEPS_PILL_MS 8000
 uint32_t battleMsgUntil = 0;    // aviso breve de por que no se puede pelear
 StrId battleMsg = S_BTL_TIRED;
 #define WILD_PILL_Y 116         // aviso del salvaje (pastilla bajo el mensaje de estado, que va en y=90)
@@ -270,7 +273,10 @@ void setup() {
   }
   pet.syncClock(e);
 
+  settingsLoad();  // ajustes del jugador (volumen, brillo, sensores...)
   audioBegin();  // ES8311 + I2S + amplificador (suena un jingle de arranque)
+  audioSetVolume(volumeRegFor(gSet.volume));
+  bootButtonSetup();  // boton BOOT: menu / volver (menu.ino)
   micBegin();    // ES7210 (microfonos) sobre el mismo I2S; despues de audioBegin
   motionBegin(); // QMI8658 (acelerometro + podometro)
 
@@ -320,6 +326,7 @@ void loop() {
 
   handleTouch();
   handleSensors(now);
+  pollBootButton(now);
   handleSerial();
   ensureMon();
 
@@ -395,11 +402,14 @@ void loop() {
 // estado de consumo actual (ver power.h)
 PowerCtx powerCtx(uint32_t now) {
   PowerCtx c;
-  c.idleMs = idleSince(now, lastInteract);
   c.screenOff = screenOff;
   c.sleeping = pet.sleeping;
-  c.gameOpen = gameOpen || sackOpen || battleOpen;
+  c.gameOpen = gameOpen || sackOpen || battleOpen || miniOpen();
   c.usb = usbPresent();
+  // tiempo de pantalla elegido en el menu: se "acelera" o "frena" la inactividad
+  c.idleMs = idleScaledFor(idleSince(now, lastInteract), gSet.dimMode);
+  // con USB y la opcion activa, nunca pasa de "algo tranquilo" (no se atenua)
+  if (gSet.usbAwake && c.usb && c.idleMs >= POWER_DIM1_MS) c.idleMs = POWER_DIM1_MS - 1;
   c.charging = batCharging();
   c.batPct = batPercent();
   return c;
@@ -426,7 +436,7 @@ void updateBrightness(uint32_t now) {
   }
   PowerCtx c = powerCtx(now);
   dimStage = dimStageFor(c.idleMs);
-  uint8_t target = brightnessFor(c);
+  uint8_t target = brightnessScaledFor(brightnessFor(c), gSet.bright);  // tope elegido en el menu
   static uint8_t current = 255;
   if (target != current) {
     current = target;
@@ -452,11 +462,13 @@ void idleWait(PowerCtx c) {
     }
     esp_sleep_enable_timer_wakeup((uint64_t)ms * 1000);
     gpio_wakeup_enable((gpio_num_t)TP_INT, GPIO_INTR_LOW_LEVEL);
+    gpio_wakeup_enable((gpio_num_t)KEY_BOOT_PIN, GPIO_INTR_LOW_LEVEL);  // boton BOOT (menu.ino)
     esp_sleep_enable_gpio_wakeup();
     esp_light_sleep_start();
     // la interrupcion del tactil vuelve a ser por flanco (como la dejo attachInterrupt); un toque
     // que ya haya bajado la linea se registra a mano
     gpio_wakeup_disable((gpio_num_t)TP_INT);
+    gpio_wakeup_disable((gpio_num_t)KEY_BOOT_PIN);
     gpio_set_intr_type((gpio_num_t)TP_INT, GPIO_INTR_NEGEDGE);
     if (digitalRead(TP_INT) == LOW) gTouchIrq = true;
     return;
@@ -593,7 +605,7 @@ bool inPetZone(int16_t x, int16_t y) {
 // pantalla principal sin nada encima: los gestos de los sensores solo actuan aqui
 static bool petScreenFree() {
   return !galleryOpen && !cardOpen && !kbOpen && !clockOpen && !gameOpen && !sackOpen &&
-         !battleOpen && !playMenuUntil &&
+         !battleOpen && !menuOpen() && !miniOpen() &&
          !confirmUntil && !choiceKind && !feedMenuUntil && !bathUntil && !pet.ceremony &&
          !pet.awaitingStarter() && !pet.evolving();
 }
@@ -611,16 +623,18 @@ static void petGesture(uint8_t act) {
 void handleSensors(uint32_t now) {
   motionPoll(now);
   // microfonos solo con alguien mirando: con la pantalla apagada o el bicho dormido se apagan
-  micSetActive(!screenOff && !pet.sleeping);
+  micSetActive(!screenOff && !pet.sleeping && gSet.mic);
 
   // pasos: cuentan siempre, el podometro del chip sigue con la CPU dormida
   uint16_t steps = motionTakeSteps();
+  if (!gSet.steps) steps = 0;  // podometro desactivado en el menu: se leen y se tiran
   if (steps) {
+    stepsPillUntil = millis() + STEPS_PILL_MS;  // que se vea que el podometro cuenta
     bool wasEgg = pet.isEgg();
     // el aviso solo suena con alguien mirando (en el bolsillo no pita cada 200 pasos)
     if (pet.walk(steps) && !screenOff && dimStage == 0) sfxPlay(wasEgg ? SFX_TAP : SFX_HEART);
     // paseando salta algun salvaje: queda esperando en pantalla (10 min) hasta que lo mires
-    if (!pet.isEgg()) {
+    if (!pet.isEgg() && gSet.wild) {
       uint32_t acc = (uint32_t)wildStepAcc + steps;
       while (acc >= WILD_STEPS) {
         acc -= WILD_STEPS;
@@ -637,6 +651,7 @@ void handleSensors(uint32_t now) {
   }
 
   uint8_t me = motionTakeEvents();
+  if (!gSet.gestures) me = 0;  // gestos desactivados en el menu
   uint8_t ae = micTakeEvents();
   if (!me && !ae) return;
   Serial.printf("SENSOR imu=%s%s mic=%s%s\n", (me & MOTION_SHAKE) ? "agitar " : "",
@@ -729,6 +744,14 @@ void handleTouch() {
     wasPressed = pressed;
     return;
   }
+  if (miniOpen()) {  // selector de juegos y minijuegos extra (games.ino)
+    if (pressed && !wasPressed) {
+      wakeUI();
+      miniTap(x, y);
+    }
+    wasPressed = pressed;
+    return;
+  }
 
   // saco de entrenamiento: cada toque cuenta al instante (aporrear rapido)
   if (sackOpen) {
@@ -776,6 +799,7 @@ void handleTouch() {
 void openClock();  // prototipo
 
 void onSwipeV(int dir) {
+  if (menuOpen()) return;
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
   if (gameOpen || galleryOpen || kbOpen || sackOpen || pet.ceremony) return;
   if (clockOpen) { clockOpen = false; return; }
@@ -784,8 +808,8 @@ void onSwipeV(int dir) {
     return;
   }
   if (dir > 0) {                    // deslizar abajo: ajustar hora
-    if (!confirmUntil && !feedMenuUntil && !playMenuUntil) openClock();
-  } else if (!pet.isEgg() && !confirmUntil && !feedMenuUntil && !playMenuUntil) {
+    if (!confirmUntil && !feedMenuUntil) openClock();
+  } else if (!pet.isEgg() && !confirmUntil && !feedMenuUntil) {
     cardOpen = true;                // deslizar arriba: ficha
     cardPage = 0;
   }
@@ -793,6 +817,7 @@ void onSwipeV(int dir) {
 
 // deslizar: dir +1 = hacia la derecha
 void onSwipe(int dir) {
+  if (menuOpen()) { menuSwipe(dir); return; }
   if (pet.awaitingStarter()) return;  // bloqueado durante la eleccion de inicial
   if (gameOpen || kbOpen || clockOpen) return;
   if (cardOpen) {  // dentro de la ficha: cambiar entre las 4 paginas
@@ -829,6 +854,7 @@ void onSwipe(int dir) {
 }
 
 void onTap(int16_t x, int16_t y) {
+  if (menuOpen()) { menuTap(x, y); return; }
   // Serial.printf("TOUCH %d %d\n", x, y);  // diagnostico (silenciado: satura el log)
   if (pet.awaitingStarter()) {  // primera partida: elegir inicial
     for (int i = 0; i < 3; i++) {
@@ -888,18 +914,6 @@ void onTap(int16_t x, int16_t y) {
     confirmUntil = 0;
     return;
   }
-  if (playMenuUntil) {       // boton jugar: minijuego (izquierda) o combate (derecha)
-    if (timeLeft(playMenuUntil) && y >= 288 && y <= 352 && x >= 167 && x <= 299) {
-      if (x < 233) {
-        startGame();
-      } else {
-        uint16_t lv = wildLevel(pet.level());
-        startBattle(pickWildDex(lv), lv, false);
-      }
-    }
-    playMenuUntil = 0;
-    return;
-  }
   // aviso de salvaje del paseo: tocarlo empieza el combate
   if (wildUntil && timeLeft(wildUntil) && !pet.isEgg() && !pet.sleeping && y >= WILD_PILL_Y && y <= WILD_PILL_Y + WILD_PILL_H &&
       x >= 83 && x <= 383) {
@@ -941,7 +955,7 @@ void onTap(int16_t x, int16_t y) {
       if (i == 0) {
         if (!pet.sleeping) feedMenuUntil = millis() + 6000;
       } else if (i == 1) {
-        if (!pet.isEgg() && !pet.sleeping) playMenuUntil = millis() + 6000;  // minijuego o combate
+        openGamePicker();  // selector: pokeball, quiz, bayas, memoria, laberinto, combate
       } else if (i == 2) {
         pet.toggleLight();
       } else {
@@ -1225,7 +1239,7 @@ void printT(const char *s) {
 // mientras su "clave" no cambie no se repintan ni se vuelcan por QSPI.
 static bool staticScreen() {
   if (pet.awaitingStarter()) return true;
-  if (galleryOpen || gameOpen || sackOpen || battleOpen) return false;  // la galeria gestiona su propio repintado
+  if (galleryOpen || gameOpen || sackOpen || battleOpen || menuOpen() || miniOpen()) return false;  // la galeria gestiona su propio repintado
   if (kbOpen || clockOpen) return true;
   return cardOpen && cardPage != 0;  // la pagina 0 tiene el retrato animado
 }
@@ -1285,6 +1299,14 @@ bool render() {
   }
   if (battleOpen) {
     renderBattle();
+    return true;
+  }
+  if (menuOpen()) {
+    renderMenu();
+    return true;
+  }
+  if (miniOpen()) {
+    renderMini();
     return true;
   }
   if (kbOpen) {
@@ -1379,21 +1401,6 @@ bool render() {
     }
   }
 
-  // boton jugar: pokeball = minijuego, VS = combate
-  if (playMenuUntil) {
-    if (!timeLeft(playMenuUntil)) {
-      playMenuUntil = 0;
-    } else {
-      gfx->fillRoundRect(167, 288, 132, 64, 14, UI_WHITE);
-      gfx->drawRoundRect(167, 288, 132, 64, 14, inkColor());
-      drawMap(SPR_ICON_PLAY, 16, 176, 296, 3, false);
-      gfx->setTextColor(UI_BAR_BAD);
-      setSize(3);
-      setCur(242, 309);
-      printT("VS");
-    }
-  }
-
   // salvaje del paseo esperando: pastilla bajo la cabecera (tocar = combatir)
   if (wildUntil && !timeLeft(wildUntil)) wildUntil = 0;
   if (wildUntil && !pet.isEgg() && !pet.sleeping && !pet.ceremony) {
@@ -1404,6 +1411,17 @@ bool render() {
     gfx->drawRoundRect(83, WILD_PILL_Y, 300, WILD_PILL_H, 18, acc);
     gfx->setTextColor(acc);
     setSize(2);
+    setCur(centerX(b, 2), WILD_PILL_Y + 10);
+    printT(b);
+  } else if (timeLeft(stepsPillUntil) && !pet.ceremony) {
+    // pasos recien contados: pastilla discreta en el mismo sitio (el salvaje manda)
+    char b[32];
+    snprintf(b, sizeof(b), T(S_STEPS_FMT), (unsigned long)pet.stepsTotal);
+    setSize(2);
+    int w = textW(b, 2) + 32;
+    gfx->fillRoundRect(CX - w / 2, WILD_PILL_Y, w, WILD_PILL_H, 18, UI_WHITE);
+    gfx->drawRoundRect(CX - w / 2, WILD_PILL_Y, w, WILD_PILL_H, 18, UI_TRACK);
+    gfx->setTextColor(UI_TRACK);
     setCur(centerX(b, 2), WILD_PILL_Y + 10);
     printT(b);
   }
@@ -2251,9 +2269,10 @@ void renderCardProfile() {
                       : pet.lovesBerry(0) ? T(S_BERRY_RED)
                       : pet.lovesBerry(1) ? T(S_BERRY_BLUE)
                                           : T(S_BERRY_GREEN);
-  char info[48];
+  // edad en dias + horas: se despide a los 3 dias, en dias solo se veria 0, 1, 2
+  char info[72];
   snprintf(info, sizeof(info), T(S_INFO_FMT), berry,
-           (unsigned long)(pet.ageMinutes / 1440));
+           (unsigned long)(pet.ageMinutes / 1440), (unsigned long)(pet.ageMinutes / 60 % 24));
   gfx->setTextColor(UI_INK);
   setSize(2);
   setCur(centerX(info, 2), 296);
